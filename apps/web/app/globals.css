@@ -109,10 +109,10 @@ body::before {
   height: 6px;
   transform: translateY(-50%);
   border-radius: 999px;
-  background: #f59e0b;
-  box-shadow: 0 0 12px rgba(245, 158, 11, 0.45);
+  background: #fc6532;
+  box-shadow: 0 0 12px rgba(252, 101, 50, 0.45);
 }
 
 .accent-underline {
-  background: linear-gradient(transparent 70%, rgba(245, 158, 11, 0.25) 70%);
+  background: linear-gradient(transparent 70%, rgba(252, 101, 50, 0.25) 70%);
 }

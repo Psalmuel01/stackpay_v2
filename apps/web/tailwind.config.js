@@ -15,7 +15,7 @@ module.exports = {
         text: "#F5F5F5",
         muted: "#A3A3A3",
         "muted-2": "#7D7D7D",
-        accent: "#F59E0B"
+        accent: "#fc6532"
       },
       fontFamily: {
         sans: ["var(--font-bricolage)", "ui-sans-serif", "system-ui"],

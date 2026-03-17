@@ -10,8 +10,9 @@ const appNav = [
   { label: "Create Invoice", href: "/create-invoice" },
   { label: "Dashboard", href: "/dashboard" },
   { label: "Profile", href: "/profile" },
-  { label: "Profile QR", href: "/profile-qr" },
-  { label: "Developer", href: "/developer" }
+  { label: "QR Link", href: "/qr-link" },
+  { label: "Developer", href: "/developer" },
+  // { label: "Settlements", href: "/settlements" }
 ];
 
 export default function AppHeader() {

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import Logo from "@/components/Logo";
 
-export default function MarketingHeader() {
+export default function SiteHeader() {
   return (
     <header className="relative z-30 w-full">
       <div className="mx-auto flex h-20 w-full max-w-6xl items-center justify-between px-6">
