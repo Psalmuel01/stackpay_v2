@@ -23,12 +23,12 @@ function SpherePoints() {
     return data;
   }, []);
 
-  // useFrame((_, delta) => {
-  //   if (ref.current) {
-  //     ref.current.rotation.y += (Math.PI * 2 * delta) / 30;
-  //     ref.current.rotation.x += (Math.PI * 2 * delta) / 90;
-  //   }
-  // });
+  useFrame((_, delta) => {
+    if (ref.current) {
+      ref.current.rotation.y += (Math.PI * 2 * delta) / 30;
+      ref.current.rotation.x += (Math.PI * 2 * delta) / 90;
+    }
+  });
 
   return (
     <Points ref={ref} positions={positions} stride={3} frustumCulled>
@@ -46,7 +46,7 @@ function SpherePoints() {
 
 export default function ParticleSphere() {
   return (
-    <div className="pointer-events-none absolute right-[8%] top-[4%] h-[480px] w-[480px] opacity-80 md:h-[600px] md:w-[600px]">
+    <div className="pointer-events-none absolute right-[4%] top-[4%] h-[480px] w-[480px] opacity-80 md:h-[600px] md:w-[600px]">
       <Canvas camera={{ position: [0, 0, 3.1], fov: 50 }} dpr={[1, 2]}>
         <ambientLight intensity={0.6} />
         <SpherePoints />

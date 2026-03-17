@@ -1,9 +1,9 @@
 import Footer from "@/components/Footer";
-import ParticleSphere from "@/components/ParticleSphere";
 import { ArrowRight, BadgeCheck, Globe, Lock, Sparkles, Workflow } from "lucide-react";
 import Link from "next/link";
-// import dynamic from "next/dynamic";
-// const ParticleSphere = dynamic(() => import("@/components/ParticleSphere"), { ssr: false });
+import dynamic from "next/dynamic";
+
+const ParticleSphere = dynamic(() => import("@/components/ParticleSphere"), { ssr: false });
 
 const featureGrid = [
   {
@@ -71,14 +71,13 @@ export default function HomePage() {
           <div className="mx-auto flex w-full max-w-6xl flex-col gap-10 px-6 md:flex-row md:items-center md:justify-between">
             <div className="max-w-2xl space-y-6">
               <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 py-2 text-xs uppercase tracking-[0.3em] text-white/60">
-                Bitcoin-native payment gateway
+                <span className="accent-do">Bitcoin-native payment gateway</span>
               </div>
-              <h1 className="text-4xl font-medium leading-tight text-white md:text-6xl">
-                StackPay makes Stacks payments feel as smooth as Stripe.
+              <h1 className="text-4xl font-semibold leading-tight text-white md:text-6xl">
+                Payments on Stacks without <span className="accent-underline">borders</span>.
               </h1>
               <p className="text-base text-white/60 md:text-lg">
-                Accept sBTC, STX, and USDCx with on-chain invoices, subscriptions, and programmable settlements —
-                all while merchants keep full control of their funds.
+                Accept sBTC, STX, and USDCx anywhere in the world — on-chain invoices, subscriptions, and instant settlements with full custody.
               </p>
               <div className="flex flex-wrap gap-3">
                 <Link
@@ -95,9 +94,9 @@ export default function HomePage() {
                 </Link>
               </div>
               <div className="flex flex-wrap items-center gap-4 text-xs uppercase tracking-[0.3em] text-white/40">
-                <span>On-chain invoices</span>
-                <span>Live webhooks</span>
-                <span>Non-custodial</span>
+                <span className="accent-dot">On-chain invoices</span>
+                <span className="accent-dot">Live webhooks</span>
+                <span className="accent-dot">Non-custodial</span>
               </div>
             </div>
           </div>
@@ -107,19 +106,27 @@ export default function HomePage() {
           <div className="mx-auto w-full max-w-6xl px-6">
             <div className="mb-10 flex flex-col gap-4">
               <span className="text-xs uppercase tracking-[0.4em] text-white/40">Core product</span>
-              <h2 className="text-3xl font-semibold md:text-4xl">Everything you need to run Bitcoin-native payments.</h2>
+              <h2 className="text-3xl font-semibold md:text-4xl">
+                Everything you need to run <span className="text-accent">Bitcoin-native</span> payments.
+              </h2>
               <p className="max-w-2xl text-sm text-white/60 md:text-base">
                 StackPay delivers on-chain invoices, recurring billing, and automated settlement infrastructure built for modern businesses.
               </p>
             </div>
 
             <div className="grid gap-6 md:grid-cols-3">
-              {featureGrid.map((feature) => {
+              {featureGrid.map((feature, index) => {
                 const Icon = feature.icon;
+                const accent = index === 2 || index === 4;
                 return (
-                  <div key={feature.title} className="glass group rounded-2xl p-6 transition hover:border-white/30">
+                  <div
+                    key={feature.title}
+                    className={`glass group rounded-2xl p-6 transition hover:border-white/30 ${
+                      accent ? "border-accent/30" : ""
+                    }`}
+                  >
                     <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-white/5">
-                      <Icon className="h-5 w-5 text-white/70" />
+                      <Icon className={`h-5 w-5 ${accent ? "text-accent" : "text-white/70"}`} />
                     </div>
                     <h3 className="text-lg font-semibold text-white">{feature.title}</h3>
                     <p className="mt-2 text-sm text-white/60">{feature.description}</p>
@@ -165,8 +172,13 @@ export default function HomePage() {
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-4">
-                  {currencies.map((token) => (
-                    <div key={token.label} className="glass-strong rounded-2xl px-6 py-4">
+                  {currencies.map((token, idx) => (
+                    <div
+                      key={token.label}
+                      className={`glass-strong rounded-2xl px-6 py-4 ${
+                        idx === 2 ? "border border-accent/30" : ""
+                      }`}
+                    >
                       <div className="flex items-center gap-3">
                         <span className={`h-2.5 w-2.5 rounded-full ${token.tone}`} />
                         <span className="text-lg font-semibold">{token.label}</span>
@@ -195,8 +207,13 @@ export default function HomePage() {
                     "Webhook signatures",
                     "Invoice lifecycle events",
                     "SDKs for JS/TS"
-                  ].map((item) => (
-                    <div key={item} className="glass rounded-xl px-4 py-3 text-sm text-white/70">
+                  ].map((item, idx) => (
+                    <div
+                      key={item}
+                      className={`glass rounded-xl px-4 py-3 text-sm text-white/70 ${
+                        idx === 1 ? "border border-accent/30" : ""
+                      }`}
+                    >
                       {item}
                     </div>
                   ))}
@@ -205,7 +222,7 @@ export default function HomePage() {
               <div className="glass rounded-2xl p-5 font-mono text-[11px] text-white/70">
                 <div className="mb-3 flex items-center justify-between text-[10px] uppercase tracking-[0.3em] text-white/40">
                   <span>Quick start</span>
-                  <span>stackpay sdk</span>
+                  <span className="text-accent">stackpay sdk</span>
                 </div>
                 <pre className="whitespace-pre-wrap leading-5">
 {`npm install @stackpay/sdk\n\nimport { StackPay } from "@stackpay/sdk";\n\nconst client = new StackPay({ apiKey: process.env.STACKPAY_API_KEY });\n\nconst invoice = await client.invoices.create({\n  type: "standard",\n  currency: "sBTC",\n  amount: 0.018,\n  description: "April subscription",\n});`}
@@ -221,7 +238,9 @@ export default function HomePage() {
               <div className="flex flex-col gap-8 md:flex-row md:items-center md:justify-between">
                 <div>
                   <span className="text-xs uppercase tracking-[0.4em] text-white/40">Docs & guides</span>
-                  <h2 className="mt-3 text-3xl font-semibold">Design for merchants. Built for developers.</h2>
+                  <h2 className="mt-3 text-3xl font-semibold">
+                    Design for merchants. Built for <span className="text-accent">developers</span>.
+                  </h2>
                   <p className="mt-3 max-w-xl text-sm text-white/60">
                     Launch production-ready payment flows with comprehensive references, SDK examples, and live webhooks.
                   </p>
