@@ -20,7 +20,7 @@ export default function ConnectWalletButton() {
     showConnect({
       appDetails,
       userSession,
-      network: stacksNetwork,
+      // network: stacksNetwork,
       onFinish: () => {
         setConnected(true);
       }

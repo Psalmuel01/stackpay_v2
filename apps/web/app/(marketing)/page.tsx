@@ -73,7 +73,7 @@ export default function HomePage() {
               <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 py-2 text-xs uppercase tracking-[0.3em] text-white/60">
                 Bitcoin-native payment gateway
               </div>
-              <h1 className="text-4xl font-semibold leading-tight text-white md:text-6xl">
+              <h1 className="text-4xl font-medium leading-tight text-white md:text-6xl">
                 StackPay makes Stacks payments feel as smooth as Stripe.
               </h1>
               <p className="text-base text-white/60 md:text-lg">
