@@ -1,7 +1,9 @@
-import ParticleSphere from "@/components/ParticleSphere";
-import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import ParticleSphere from "@/components/ParticleSphere";
 import { ArrowRight, BadgeCheck, Globe, Lock, Sparkles, Workflow } from "lucide-react";
+import Link from "next/link";
+// import dynamic from "next/dynamic";
+// const ParticleSphere = dynamic(() => import("@/components/ParticleSphere"), { ssr: false });
 
 const featureGrid = [
   {
@@ -63,8 +65,6 @@ const currencies = [
 export default function HomePage() {
   return (
     <div id="top" className="min-h-screen">
-      <Navbar />
-
       <main className="relative overflow-hidden">
         <section className="fade-section relative section-pad pb-28">
           <ParticleSphere />
@@ -81,12 +81,18 @@ export default function HomePage() {
                 all while merchants keep full control of their funds.
               </p>
               <div className="flex flex-wrap gap-3">
-                <button className="button-glow inline-flex items-center gap-2 rounded-full border border-white/20 bg-white px-6 py-3 text-sm font-semibold text-black transition hover:scale-[1.02]">
+                <Link
+                  href="/explorer"
+                  className="button-glow inline-flex items-center gap-2 rounded-full border border-white/20 bg-white px-6 py-3 text-sm font-semibold text-black transition hover:scale-[1.02]"
+                >
                   Get Started <ArrowRight className="h-4 w-4" />
-                </button>
-                <button className="button-glow inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-6 py-3 text-sm text-white/70 transition hover:border-white/30 hover:text-white">
+                </Link>
+                <Link
+                  href="/docs"
+                  className="button-glow inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-6 py-3 text-sm text-white/70 transition hover:border-white/30 hover:text-white"
+                >
                   Documentation
-                </button>
+                </Link>
               </div>
               <div className="flex flex-wrap items-center gap-4 text-xs uppercase tracking-[0.3em] text-white/40">
                 <span>On-chain invoices</span>
@@ -196,13 +202,13 @@ export default function HomePage() {
                   ))}
                 </div>
               </div>
-              <div className="glass rounded-2xl p-6 font-mono text-xs text-white/70">
-                <div className="mb-4 flex items-center justify-between text-[10px] uppercase tracking-[0.3em] text-white/40">
+              <div className="glass rounded-2xl p-5 font-mono text-[11px] text-white/70">
+                <div className="mb-3 flex items-center justify-between text-[10px] uppercase tracking-[0.3em] text-white/40">
                   <span>Quick start</span>
                   <span>stackpay sdk</span>
                 </div>
-                <pre className="whitespace-pre-wrap leading-relaxed">
-{`npm install @stackpay/sdk\n\nimport { StackPay } from "@stackpay/sdk";\n\nconst client = new StackPay({\n  apiKey: process.env.STACKPAY_API_KEY,\n});\n\nconst invoice = await client.invoices.create({\n  type: "standard",\n  currency: "sBTC",\n  amount: 0.018,\n  description: "April subscription",\n});`}
+                <pre className="whitespace-pre-wrap leading-5">
+{`npm install @stackpay/sdk\n\nimport { StackPay } from "@stackpay/sdk";\n\nconst client = new StackPay({ apiKey: process.env.STACKPAY_API_KEY });\n\nconst invoice = await client.invoices.create({\n  type: "standard",\n  currency: "sBTC",\n  amount: 0.018,\n  description: "April subscription",\n});`}
                 </pre>
               </div>
             </div>
@@ -220,9 +226,12 @@ export default function HomePage() {
                     Launch production-ready payment flows with comprehensive references, SDK examples, and live webhooks.
                   </p>
                 </div>
-                <button className="button-glow inline-flex items-center gap-2 rounded-full border border-white/20 bg-white px-6 py-3 text-sm font-semibold text-black transition hover:scale-[1.02]">
+                <Link
+                  href="/docs"
+                  className="button-glow inline-flex items-center gap-2 rounded-full border border-white/20 bg-white px-6 py-3 text-sm font-semibold text-black transition hover:scale-[1.02]"
+                >
                   Explore Docs <ArrowRight className="h-4 w-4" />
-                </button>
+                </Link>
               </div>
             </div>
           </div>

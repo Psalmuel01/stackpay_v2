@@ -1,13 +1,13 @@
-import AppShell from "@/components/AppShell";
 import GlassCard from "@/components/GlassCard";
+import PageHeader from "@/components/app/PageHeader";
 
 export default function DeveloperPage() {
   return (
-    <AppShell
-      active="Developer"
-      title="Developer Tools"
-      subtitle="API keys, webhooks, SDKs, and live delivery logs for StackPay integrations."
-    >
+    <div>
+      <PageHeader
+        title="Developer Tools"
+        subtitle="API keys, webhooks, SDKs, and live delivery logs for StackPay integrations."
+      />
       <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
         <GlassCard>
           <div className="mb-4 text-sm uppercase tracking-[0.3em] text-white/40">API keys</div>
@@ -37,6 +37,6 @@ export default function DeveloperPage() {
 {`npm install @stackpay/sdk\n\nimport { StackPay } from "@stackpay/sdk";\n\nconst client = new StackPay({ apiKey: process.env.STACKPAY_API_KEY });\nconst invoice = await client.invoices.create({ amount: 0.012, currency: "sBTC" });`}
         </pre>
       </GlassCard>
-    </AppShell>
+    </div>
   );
 }

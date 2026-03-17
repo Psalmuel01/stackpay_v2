@@ -7,7 +7,7 @@ import { useMemo, useRef } from "react";
 
 function SpherePoints() {
   const ref = useRef<THREE.Points>(null!);
-  const count = 1600;
+  const count = 1500;
   const positions = useMemo(() => {
     const data = new Float32Array(count * 3);
     for (let i = 0; i < count; i += 1) {
@@ -15,7 +15,7 @@ function SpherePoints() {
       const v = Math.random();
       const theta = 2 * Math.PI * u;
       const phi = Math.acos(2 * v - 1);
-      const r = 1.15 + Math.random() * 0.08;
+      const r = 1.05 + Math.random() * 0.06;
       data[i * 3] = r * Math.sin(phi) * Math.cos(theta);
       data[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
       data[i * 3 + 2] = r * Math.cos(phi);
@@ -38,7 +38,7 @@ function SpherePoints() {
         size={0.02}
         sizeAttenuation
         depthWrite={false}
-        opacity={0.9}
+        opacity={0.85}
       />
     </Points>
   );
@@ -46,8 +46,8 @@ function SpherePoints() {
 
 export default function ParticleSphere() {
   return (
-    <div className="pointer-events-none absolute right-[-10%] top-[-8%] h-[520px] w-[520px] opacity-80 md:h-[680px] md:w-[680px]">
-      <Canvas camera={{ position: [0, 0, 3.2], fov: 50 }} dpr={[1, 2]}>
+    <div className="pointer-events-none absolute right-[-2%] top-[-4%] h-[480px] w-[480px] opacity-80 md:h-[600px] md:w-[600px]">
+      <Canvas camera={{ position: [0, 0, 3.1], fov: 50 }} dpr={[1, 2]}>
         <ambientLight intensity={0.6} />
         <SpherePoints />
       </Canvas>

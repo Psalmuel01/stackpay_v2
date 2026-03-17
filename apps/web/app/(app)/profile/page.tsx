@@ -1,13 +1,13 @@
-import AppShell from "@/components/AppShell";
 import GlassCard from "@/components/GlassCard";
+import PageHeader from "@/components/app/PageHeader";
 
 export default function ProfilePage() {
   return (
-    <AppShell
-      active="Profile"
-      title="Profile & Settings"
-      subtitle="Manage merchant info, connected wallets, and notification preferences."
-    >
+    <div>
+      <PageHeader
+        title="Profile & Settings"
+        subtitle="Manage merchant info, connected wallets, and notification preferences."
+      />
       <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
         <GlassCard>
           <div className="mb-4 text-sm uppercase tracking-[0.3em] text-white/40">Merchant profile</div>
@@ -57,6 +57,6 @@ export default function ProfilePage() {
           ))}
         </div>
       </GlassCard>
-    </AppShell>
+    </div>
   );
 }

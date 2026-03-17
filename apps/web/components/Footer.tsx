@@ -12,10 +12,11 @@ export default function Footer() {
           </p>
         </div>
         <div className="flex flex-wrap gap-6 text-sm text-white/50">
-          <span>Product</span>
+          {/* <span>Product</span>
           <span>Developers</span>
           <span>Security</span>
-          <span>Status</span>
+          <span>Status</span> */}
+          <span>© 2026 StackPay. All rights reserved.</span>
         </div>
       </div>
     </footer>

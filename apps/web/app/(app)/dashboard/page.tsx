@@ -1,5 +1,5 @@
-import AppShell from "@/components/AppShell";
 import GlassCard from "@/components/GlassCard";
+import PageHeader from "@/components/app/PageHeader";
 
 const stats = [
   { label: "Total Volume", value: "24.8 sBTC", change: "+12.4%" },
@@ -17,11 +17,11 @@ const activity = [
 
 export default function DashboardPage() {
   return (
-    <AppShell
-      active="Dashboard"
-      title="Merchant Dashboard"
-      subtitle="Live volume, settlements, and invoice performance across your StackPay account."
-    >
+    <div>
+      <PageHeader
+        title="Merchant Dashboard"
+        subtitle="Live volume, settlements, and invoice performance across your StackPay account."
+      />
       <div className="grid gap-6 md:grid-cols-4">
         {stats.map((stat) => (
           <GlassCard key={stat.label} className="space-y-2">
@@ -71,6 +71,6 @@ export default function DashboardPage() {
           </GlassCard>
         ))}
       </div>
-    </AppShell>
+    </div>
   );
 }

@@ -1,5 +1,5 @@
-import AppShell from "@/components/AppShell";
 import GlassCard from "@/components/GlassCard";
+import PageHeader from "@/components/app/PageHeader";
 
 const plans = [
   { name: "Pro Annual", amount: "120 USDCx", interval: "Yearly" },
@@ -8,11 +8,11 @@ const plans = [
 
 export default function SubscriptionsPage() {
   return (
-    <AppShell
-      active="Subscriptions"
-      title="Subscriptions"
-      subtitle="Create recurring billing plans and track every renewal in real-time."
-    >
+    <div>
+      <PageHeader
+        title="Subscriptions"
+        subtitle="Create recurring billing plans and track every renewal in real-time."
+      />
       <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
         <GlassCard>
           <div className="mb-6 flex items-center justify-between">
@@ -45,6 +45,6 @@ export default function SubscriptionsPage() {
           </div>
         </GlassCard>
       </div>
-    </AppShell>
+    </div>
   );
 }

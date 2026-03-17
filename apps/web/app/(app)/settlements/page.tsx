@@ -1,13 +1,13 @@
-import AppShell from "@/components/AppShell";
 import GlassCard from "@/components/GlassCard";
+import PageHeader from "@/components/app/PageHeader";
 
 export default function SettlementsPage() {
   return (
-    <AppShell
-      active="Settlements"
-      title="Settlements"
-      subtitle="Automate payouts to your wallets with thresholds or schedules."
-    >
+    <div>
+      <PageHeader
+        title="Settlements"
+        subtitle="Automate payouts to your wallets with thresholds or schedules."
+      />
       <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
         <GlassCard>
           <div className="mb-6 text-sm uppercase tracking-[0.3em] text-white/40">Settlement rules</div>
@@ -35,6 +35,6 @@ export default function SettlementsPage() {
           </div>
         </GlassCard>
       </div>
-    </AppShell>
+    </div>
   );
 }

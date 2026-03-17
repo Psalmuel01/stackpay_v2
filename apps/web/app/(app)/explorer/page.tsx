@@ -1,13 +1,13 @@
-import AppShell from "@/components/AppShell";
 import GlassCard from "@/components/GlassCard";
+import PageHeader from "@/components/app/PageHeader";
 
 export default function ExplorerPage() {
   return (
-    <AppShell
-      active="Explorer"
-      title="Explorer"
-      subtitle="Search public invoices and verify payments on-chain."
-    >
+    <div>
+      <PageHeader
+        title="Explorer"
+        subtitle="Search public invoices and verify payments on-chain."
+      />
       <GlassCard className="mb-6">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <input
@@ -41,6 +41,6 @@ export default function ExplorerPage() {
           <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">Invoice 0x9b...7ef expired · 12 STX</div>
         </div>
       </GlassCard>
-    </AppShell>
+    </div>
   );
 }

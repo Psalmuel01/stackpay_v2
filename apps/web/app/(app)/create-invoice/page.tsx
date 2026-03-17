@@ -1,5 +1,5 @@
-import AppShell from "@/components/AppShell";
 import GlassCard from "@/components/GlassCard";
+import PageHeader from "@/components/app/PageHeader";
 
 const types = ["Standard", "Subscription", "Donation"];
 const currencies = ["sBTC", "STX", "USDCx"];
@@ -7,11 +7,11 @@ const expirations = ["1h", "24h", "7d", "30d", "Never"];
 
 export default function CreateInvoicePage() {
   return (
-    <AppShell
-      active="Create Invoice"
-      title="Create Invoice"
-      subtitle="Generate a payment link with QR code, expiration, and on-chain settlement rules."
-    >
+    <div>
+      <PageHeader
+        title="Create Invoice"
+        subtitle="Generate a payment link with QR code, expiration, and on-chain settlement rules."
+      />
       <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr]">
         <GlassCard>
           <div className="mb-6 text-sm uppercase tracking-[0.3em] text-white/40">Invoice details</div>
@@ -119,6 +119,6 @@ export default function CreateInvoicePage() {
           </div>
         </GlassCard>
       </div>
-    </AppShell>
+    </div>
   );
 }

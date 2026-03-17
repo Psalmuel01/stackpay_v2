@@ -1,5 +1,5 @@
-import AppShell from "@/components/AppShell";
 import GlassCard from "@/components/GlassCard";
+import PageHeader from "@/components/app/PageHeader";
 
 const invoices = [
   { hash: "0x8c...a41", amount: "0.018 sBTC", status: "Settled" },
@@ -9,11 +9,11 @@ const invoices = [
 
 export default function InvoicesPage() {
   return (
-    <AppShell
-      active="Invoices"
-      title="Invoices"
-      subtitle="Filter, search, and share payment links across all invoice types."
-    >
+    <div>
+      <PageHeader
+        title="Invoices"
+        subtitle="Filter, search, and share payment links across all invoice types."
+      />
       <GlassCard>
         <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div className="flex gap-2">
@@ -59,6 +59,6 @@ export default function InvoicesPage() {
           ))}
         </div>
       </GlassCard>
-    </AppShell>
+    </div>
   );
 }

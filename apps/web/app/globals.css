@@ -13,10 +13,12 @@
 html,
 body {
   height: 100%;
+  scroll-behavior: smooth;
 }
 
 body {
   margin: 0;
+  font-family: var(--font-bricolage), ui-sans-serif, system-ui;
   background: radial-gradient(1200px 800px at 75% 15%, rgba(255, 255, 255, 0.07), transparent 55%),
     radial-gradient(800px 600px at 20% 85%, rgba(255, 255, 255, 0.05), transparent 60%),
     #070707;
