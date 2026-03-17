@@ -1,0 +1,15 @@
+{
+  "name": "stackpay",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run -w @stackpay/web dev",
+    "build": "npm run -w @stackpay/web build",
+    "start": "npm run -w @stackpay/web start",
+    "lint": "npm run -w @stackpay/web lint",
+    "dev:api": "npm run -w @stackpay/api dev"
+  }
+}
