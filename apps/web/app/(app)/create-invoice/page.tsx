@@ -434,16 +434,16 @@ export default function CreateInvoicePage() {
               </div>
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4">
+            {/* <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4">
               <div className="text-[11px] uppercase tracking-[0.22em] text-white/40">
                 What happens next
               </div>
               <div className="mt-4 grid gap-3 md:grid-cols-3">
                 {(type === "standard"
-                  ? [
+                    ? [
                       "Invoice is stored in workspace state",
                       "Hosted checkout opens immediately",
-                      "Explorer and dashboard update after payment",
+                      "Invoices and dashboard update after payment",
                     ]
                   : type === "subscription"
                     ? [
@@ -465,7 +465,7 @@ export default function CreateInvoicePage() {
                   </div>
                 ))}
               </div>
-            </div>
+            </div> */}
 
             <div className="flex flex-wrap gap-3">
               <button

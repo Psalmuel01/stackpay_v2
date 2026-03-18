@@ -6,7 +6,6 @@ import PageHeader from "@/components/app/PageHeader";
 import { settingsNavigation } from "@stackpay/ui";
 
 const summaries: Record<string, string> = {
-  "/qr-link": "Manage universal payment entry points, QR codes, and shareable hosted routes.",
   "/settlements": "Configure payout rules, thresholds, and settlement execution history.",
   "/developer": "Inspect API keys, webhook deliveries, and integration test events.",
   "/profile": "Update merchant identity, settlement wallet, defaults, and notification settings.",

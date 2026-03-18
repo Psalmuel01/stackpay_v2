@@ -54,7 +54,7 @@ export default function HostedPaymentPage({
               <h1 className="text-4xl font-semibold text-white">{state.merchant.businessName}</h1>
               <p className="mx-auto max-w-xl text-sm text-white/60">
                 Review the invoice summary, connect a wallet, and complete payment. This demo writes the
-                result back into the merchant dashboard, explorer, receipts, and webhook log.
+                result back into the merchant dashboard, invoices, receipts, and webhook log.
               </p>
             </div>
 
@@ -140,10 +140,10 @@ export default function HostedPaymentPage({
                 View dashboard
               </Link>
               <Link
-                href="/explorer"
+                href="/invoices"
                 className="rounded-full border border-white/10 bg-white/5 px-4 py-3 text-white/70"
               >
-                Verify in explorer
+                View invoices
               </Link>
             </div>
           </div>

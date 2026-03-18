@@ -214,10 +214,10 @@ export default function PublicPaymentLinkPage({
                     : "Open invoice"}
               </button>
               <Link
-                href="/explorer"
+                href="/invoices"
                 className="flex w-full items-center justify-center rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm text-white/70"
               >
-                Inspect in explorer
+                View merchant records
               </Link>
             </div>
           </GlassCard>

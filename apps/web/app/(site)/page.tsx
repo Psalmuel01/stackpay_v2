@@ -76,7 +76,7 @@ export default function HomePage() {
               </p>
               <div className="flex flex-wrap gap-3">
                 <Link
-                  href="/explorer"
+                  href="/dashboard"
                   className="button-glow inline-flex items-center gap-2 rounded-full border border-white/20 bg-white px-6 py-3 text-sm font-semibold text-black transition hover:scale-[1.02]"
                 >
                   Get Started <ArrowRight className="h-4 w-4" />

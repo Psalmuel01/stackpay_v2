@@ -35,7 +35,7 @@ export default function SubscriptionsPage() {
         title="Subscriptions"
         subtitle="Create recurring plans, add subscriber records, and generate renewal invoices so the recurring flow is demo-complete before backend automation."
       />
-      <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+      <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr">
         <GlassCard>
           <div className="mb-6 flex items-center justify-between">
             <div className="text-sm uppercase tracking-[0.3em] text-white/40">Plans</div>

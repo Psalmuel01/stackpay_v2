@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import Logo from "@/components/Logo";
@@ -10,6 +10,28 @@ import { appNavigation, settingsNavigation } from "@stackpay/ui";
 export default function AppHeader() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const settingsActive = open || settingsNavigation.some((item) => pathname?.startsWith(item.href));
+
+  useEffect(() => {
+    setOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    function handlePointerDown(event: MouseEvent) {
+      if (!menuRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+
+    if (open) {
+      document.addEventListener("mousedown", handlePointerDown);
+    }
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+    };
+  }, [open]);
 
   return (
     <header className="sticky top-0 z-40 w-full border-b border-white/5 bg-black/30 backdrop-blur">
@@ -20,7 +42,7 @@ export default function AppHeader() {
 
         <nav className="hidden items-center gap-2 rounded-full border border-white/10 bg-white/5 p-1 text-[13px] text-white/70 xl:flex">
           {appNavigation.map((item) => {
-            const active = pathname?.startsWith(item.href);
+            const active = !settingsActive && pathname?.startsWith(item.href);
             return (
               <Link
                 key={item.href}
@@ -33,11 +55,11 @@ export default function AppHeader() {
               </Link>
             );
           })}
-          <div className="relative">
+          <div ref={menuRef} className="relative">
             <button
               onClick={() => setOpen((value) => !value)}
               className={`rounded-full px-4 py-2 transition ${
-                settingsNavigation.some((item) => pathname?.startsWith(item.href))
+                settingsActive
                   ? "pill-active text-white"
                   : "hover:text-white"
               }`}
