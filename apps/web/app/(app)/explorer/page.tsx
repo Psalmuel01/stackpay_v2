@@ -31,7 +31,7 @@ export default function ExplorerPage() {
     <div>
       <PageHeader
         title="Explorer"
-        subtitle="Search invoices, payment links, and receipts against the shared demo state so public verification and merchant operations behave like one system."
+        subtitle="Search invoices, MultiPay routes, and receipts against the shared demo state so public verification and merchant operations behave like one system."
       />
 
       <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
@@ -178,14 +178,14 @@ export default function ExplorerPage() {
                 ]
                 : paymentLink
                   ? [
-                    "Reusable payment link created",
+                    "Reusable MultiPay route created",
                     "Hosted route resolves merchant mode",
                     "Link can create or resolve invoice state",
                   ]
                   : [
                     "Search by invoice id",
                     "Search by receipt id",
-                    "Search by payment link slug",
+                    "Search by MultiPay route slug",
                   ]
               ).map((step, index) => (
                 <div key={step} className="flex gap-3">

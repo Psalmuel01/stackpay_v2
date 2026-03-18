@@ -5,28 +5,20 @@ import Link from "next/link";
 import GlassCard from "@/components/GlassCard";
 import PageHeader from "@/components/app/PageHeader";
 import QrPreview from "@/components/app/QrPreview";
-import {
-  type Currency,
-  type InvoiceType,
-  formatCurrencyAmount,
-  useDemo,
-} from "@/components/app/DemoProvider";
+import { type Currency, formatCurrencyAmount, useDemo } from "@/components/app/DemoProvider";
 
-const types: Array<{ id: InvoiceType; label: string; summary: string }> = [
+type CreateFlow = "standard" | "multipay";
+
+const flows: Array<{ id: CreateFlow; label: string; summary: string }> = [
   {
     id: "standard",
     label: "Standard",
-    summary: "Fixed amount invoice with expiry and direct hosted checkout.",
+    summary: "One invoice, one payment. The invoice closes after it is paid.",
   },
   {
-    id: "subscription",
-    label: "Subscription",
-    summary: "Create a recurring plan, optional seed subscriber, and public plan checkout link.",
-  },
-  {
-    id: "donation",
-    label: "Donation",
-    summary: "Create a reusable public payment link with a default amount and adjustable checkout controls.",
+    id: "multipay",
+    label: "MultiPay",
+    summary: "Reusable public route for multiple payments. Each customer payment creates a fresh invoice.",
   },
 ];
 
@@ -37,11 +29,6 @@ const expirations = [
   { label: "7d", hours: 24 * 7 },
   { label: "30d", hours: 24 * 30 },
   { label: "Never", hours: null },
-];
-const intervals = [
-  { label: "Weekly", seconds: 60 * 60 * 24 * 7 },
-  { label: "Monthly", seconds: 60 * 60 * 24 * 30 },
-  { label: "Quarterly", seconds: 60 * 60 * 24 * 90 },
 ];
 
 function slugify(value: string) {
@@ -54,21 +41,18 @@ function slugify(value: string) {
 
 export default function CreateInvoicePage() {
   const { state, actions } = useDemo();
-  const [type, setType] = useState<InvoiceType>("standard");
-  const [amount, setAmount] = useState("");
+  const [flow, setFlow] = useState<CreateFlow>("standard");
   const [currency, setCurrency] = useState<Currency>("sBTC");
+  const [amount, setAmount] = useState("");
   const [expiration, setExpiration] = useState<number | null>(24);
+
   const [customer, setCustomer] = useState("");
   const [email, setEmail] = useState("");
   const [description, setDescription] = useState("");
   const [metadata, setMetadata] = useState("");
 
-  const [planName, setPlanName] = useState("");
-  const [interval, setInterval] = useState(intervals[1]);
-  const [seedSubscriber, setSeedSubscriber] = useState(true);
-
-  const [donationTitle, setDonationTitle] = useState("");
-  const [donationSlug, setDonationSlug] = useState("");
+  const [title, setTitle] = useState("");
+  const [slug, setSlug] = useState("");
   const [amountStep, setAmountStep] = useState("");
 
   const [result, setResult] = useState<{
@@ -78,19 +62,15 @@ export default function CreateInvoicePage() {
   } | null>(null);
   const [copied, setCopied] = useState(false);
 
-  const activeType = types.find((item) => item.id === type)!;
   const previewLabel = useMemo(() => {
     if (result) {
       return result.href.replace(/^\//, "stackpay.app/");
     }
-    if (type === "subscription") {
-      return `stackpay.app/pay/link/${slugify(planName || "subscription")}`;
-    }
-    if (type === "donation") {
-      return `stackpay.app/pay/link/${slugify(donationSlug || "donation")}`;
+    if (flow === "multipay") {
+      return `stackpay.app/pay/link/${slugify(slug || "multipay")}`;
     }
     return "stackpay.app/pay/demo-preview";
-  }, [donationSlug, planName, result, type]);
+  }, [flow, result, slug]);
 
   async function handleCopy() {
     if (!result) {
@@ -102,10 +82,10 @@ export default function CreateInvoicePage() {
   }
 
   function submit(draft: boolean) {
-    if (type === "standard") {
+    if (flow === "standard") {
       const invoice = actions.createInvoice(
         {
-          type,
+          type: "standard",
           customer,
           email,
           amount: Number(amount || 0),
@@ -117,91 +97,53 @@ export default function CreateInvoicePage() {
         },
         { draft }
       );
+
       setResult({
         title: invoice.id,
         href: `/pay/${invoice.id}`,
         summary: draft
-          ? "Draft invoice saved to the workspace."
-          : "Hosted invoice created and ready to share.",
-      });
-      return;
-    }
-
-    if (type === "subscription") {
-      const plan = actions.createPlan({
-        name: planName,
-        amount: Number(amount || 0),
-        currency,
-        intervalLabel: interval.label,
-        intervalSeconds: interval.seconds,
-        metadata,
-      });
-      const link = actions.createPaymentLink({
-        slug: slugify(planName || `${state.merchant.slug}-plan`),
-        title: `${plan.name} checkout`,
-        description: `${plan.name} subscription checkout for recurring billing.`,
-        mode: "subscription",
-        currency,
-        planId: plan.id,
-      });
-      if (seedSubscriber && customer && email) {
-        actions.addSubscriber({
-          planId: plan.id,
-          customer,
-          email,
-          seats: 1,
-        });
-      }
-      setResult({
-        title: plan.id,
-        href: `/pay/link/${link.slug}`,
-        summary: "Subscription plan, public checkout link, and optional seed subscriber created.",
+          ? "Draft invoice saved in the workspace."
+          : "Single-payment invoice created. It will close after payment.",
       });
       return;
     }
 
     const link = actions.createPaymentLink({
-      slug: slugify(donationSlug || `${state.merchant.slug}-support`),
-      title: donationTitle,
+      slug: slugify(slug || `${state.merchant.slug}-multipay`),
+      title: title || "MultiPay route",
       description,
-      mode: "donation",
+      mode: "multipay",
       currency,
       defaultAmount: Number(amount || 0),
       amountStep: Number(amountStep || 0),
       allowCustomAmount: true,
     });
+
     setResult({
       title: link.id,
       href: `/pay/link/${link.slug}`,
-      summary: `Reusable payment link created with a default amount of ${formatCurrencyAmount(
-        Number(amount || 0),
-        currency
-      )}.`,
+      summary: "MultiPay link created. It stays active and can generate multiple payments over time.",
     });
   }
 
   return (
     <div>
       <PageHeader
-        title="Create Payment Flow"
-        subtitle="Switch between one-time invoices, subscription checkout, and reusable donation links. Each mode now has its own form and output behavior."
+        title="Create Invoice"
+        subtitle="Choose between a standard single-payment invoice and a reusable MultiPay route."
       />
-      <div className="grid gap-8 xl:grid-cols-[1.15fr_0.85fr]">
-        <GlassCard className="border border-white/20">
-          <div className="mb-6 text-[11px] uppercase tracking-[0.26em] text-white/40">
-            Flow details
-          </div>
 
-          <div className="space-y-6">
+      <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+        <GlassCard className="border border-white/20">
+          <div className="space-y-5">
             <div>
-              <div className="text-xs uppercase tracking-[0.24em] text-white/40">Flow type</div>
               <div className="mt-3 flex flex-wrap gap-3">
-                {types.map((item) => (
+                {flows.map((item) => (
                   <button
                     key={item.id}
-                    onClick={() => setType(item.id)}
+                    onClick={() => setFlow(item.id)}
                     className={`rounded-full px-4 py-2 text-sm transition ${
-                      type === item.id
+                      flow === item.id
                         ? "border border-white/20 bg-white text-black"
                         : "border border-white/10 bg-white/5 text-white/70 hover:border-white/30"
                     }`}
@@ -210,20 +152,22 @@ export default function CreateInvoicePage() {
                   </button>
                 ))}
               </div>
-              <div className="mt-3 text-sm text-white/55">{activeType.summary}</div>
+              <div className="mt-3 text-sm text-white/55">
+                {flows.find((item) => item.id === flow)?.summary}
+              </div>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
               <div>
                 <label className="text-xs uppercase tracking-[0.24em] text-white/40">
-                  {type === "donation" ? "Default amount" : "Amount"}
+                  {flow === "multipay" ? "Default amount" : "Amount"}
                 </label>
                 <div className="mt-2 flex items-center rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
                   <input
                     className="w-full bg-transparent text-sm text-white/80 outline-none"
                     value={amount}
                     onChange={(event) => setAmount(event.target.value)}
-                    placeholder={type === "donation" ? "Default checkout amount" : "Invoice amount"}
+                    placeholder={flow === "multipay" ? "Starting checkout amount" : "Invoice amount"}
                   />
                   <span className="text-xs text-white/55">{currency}</span>
                 </div>
@@ -248,7 +192,7 @@ export default function CreateInvoicePage() {
               </div>
             </div>
 
-            {type === "standard" ? (
+            {flow === "standard" ? (
               <>
                 <div className="grid gap-4 md:grid-cols-2">
                   <div>
@@ -299,104 +243,36 @@ export default function CreateInvoicePage() {
                     placeholder="What the customer is paying for"
                   />
                 </div>
-              </>
-            ) : null}
-
-            {type === "subscription" ? (
-              <>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div>
-                    <label className="text-xs uppercase tracking-[0.24em] text-white/40">Plan name</label>
-                    <input
-                      className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/80 outline-none"
-                      value={planName}
-                      onChange={(event) => setPlanName(event.target.value)}
-                      placeholder="Pro Annual"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs uppercase tracking-[0.24em] text-white/40">Billing interval</label>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {intervals.map((item) => (
-                        <button
-                          key={item.label}
-                          onClick={() => setInterval(item)}
-                          className={`rounded-full px-3 py-2 text-xs transition ${
-                            interval.label === item.label
-                              ? "border border-white/20 bg-white text-black"
-                              : "border border-white/10 bg-white/5 text-white/70"
-                          }`}
-                        >
-                          {item.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div>
-                    <label className="text-xs uppercase tracking-[0.24em] text-white/40">Seed subscriber</label>
-                    <input
-                      className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/80 outline-none"
-                      value={customer}
-                      onChange={(event) => setCustomer(event.target.value)}
-                      placeholder="Optional first subscriber"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs uppercase tracking-[0.24em] text-white/40">Subscriber email</label>
-                    <input
-                      className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/80 outline-none"
-                      value={email}
-                      onChange={(event) => setEmail(event.target.value)}
-                      placeholder="billing@example.com"
-                    />
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => setSeedSubscriber((value) => !value)}
-                  className={`inline-flex rounded-full px-4 py-2 text-xs transition ${
-                    seedSubscriber
-                      ? "border border-white/20 bg-white text-black"
-                      : "border border-white/10 bg-white/5 text-white/70"
-                  }`}
-                >
-                  {seedSubscriber ? "Seed subscriber on" : "Seed subscriber off"}
-                </button>
 
                 <div>
-                  <label className="text-xs uppercase tracking-[0.24em] text-white/40">Plan metadata</label>
+                  <label className="text-xs uppercase tracking-[0.24em] text-white/40">Metadata</label>
                   <input
                     className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/80 outline-none"
                     value={metadata}
                     onChange={(event) => setMetadata(event.target.value)}
-                    placeholder="tier=pro"
+                    placeholder="campaign=spring"
                   />
                 </div>
               </>
-            ) : null}
-
-            {type === "donation" ? (
+            ) : (
               <>
                 <div className="grid gap-4 md:grid-cols-2">
                   <div>
                     <label className="text-xs uppercase tracking-[0.24em] text-white/40">Link title</label>
                     <input
                       className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/80 outline-none"
-                      value={donationTitle}
-                      onChange={(event) => setDonationTitle(event.target.value)}
-                      placeholder="Support Studio Noon"
+                      value={title}
+                      onChange={(event) => setTitle(event.target.value)}
+                      placeholder="Countertop checkout"
                     />
                   </div>
                   <div>
-                    <label className="text-xs uppercase tracking-[0.24em] text-white/40">Custom slug</label>
+                    <label className="text-xs uppercase tracking-[0.24em] text-white/40">Public slug</label>
                     <input
                       className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/80 outline-none"
-                      value={donationSlug}
-                      onChange={(event) => setDonationSlug(slugify(event.target.value))}
-                      placeholder="support-studio-noon"
+                      value={slug}
+                      onChange={(event) => setSlug(slugify(event.target.value))}
+                      placeholder="countertop-checkout"
                     />
                   </div>
                 </div>
@@ -408,96 +284,52 @@ export default function CreateInvoicePage() {
                       className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/80 outline-none"
                       value={amountStep}
                       onChange={(event) => setAmountStep(event.target.value)}
-                      placeholder="How much +/- changes the amount"
+                      placeholder="Plus/minus increment"
                     />
                   </div>
                   <div>
-                    <label className="text-xs uppercase tracking-[0.24em] text-white/40">Metadata</label>
+                    <label className="text-xs uppercase tracking-[0.24em] text-white/40">Description</label>
                     <input
                       className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/80 outline-none"
-                      value={metadata}
-                      onChange={(event) => setMetadata(event.target.value)}
-                      placeholder="channel=events"
+                      value={description}
+                      onChange={(event) => setDescription(event.target.value)}
+                      placeholder="Short note shown on hosted checkout"
                     />
                   </div>
                 </div>
 
-                <div>
-                  <label className="text-xs uppercase tracking-[0.24em] text-white/40">Campaign copy</label>
-                  <textarea
-                    className="mt-2 h-24 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/80 outline-none"
-                    value={description}
-                    onChange={(event) => setDescription(event.target.value)}
-                    placeholder="Support the project with a quick on-chain payment."
-                  />
+                <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70">
+                  MultiPay links stay active after each payment. Every customer session creates its own invoice,
+                  so you can reuse the same route for ongoing payments.
                 </div>
               </>
-            ) : null}
+            )}
 
             <div className="grid gap-4 md:grid-cols-2">
               <div>
                 <label className="text-xs uppercase tracking-[0.24em] text-white/40">Recipient</label>
                 <div className="mt-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70">
-                  {state.merchant.settlementWallet.substring(0, 6)}...{state.merchant.settlementWallet.slice(-4) || "Main settlement wallet"}
+                  {state.merchant.settlementWallet.substring(0, 6)}...{state.merchant.settlementWallet.slice(-4)}
                 </div>
               </div>
               <div>
                 <label className="text-xs uppercase tracking-[0.24em] text-white/40">Outcome</label>
                 <div className="mt-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70">
-                  {type === "standard"
-                    ? "Creates an invoice immediately"
-                    : type === "subscription"
-                      ? "Creates a plan + public checkout link"
-                      : "Creates a reusable payment link"}
+                  {flow === "standard"
+                    ? "Creates a single-payment invoice"
+                    : "Creates a reusable MultiPay route"}
                 </div>
               </div>
             </div>
-
-            {/* <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4">
-              <div className="text-[11px] uppercase tracking-[0.22em] text-white/40">
-                What happens next
-              </div>
-              <div className="mt-4 grid gap-3 md:grid-cols-3">
-                {(type === "standard"
-                    ? [
-                      "Invoice is stored in workspace state",
-                      "Hosted checkout opens immediately",
-                      "Invoices and dashboard update after payment",
-                    ]
-                  : type === "subscription"
-                    ? [
-                        "Plan is created in subscriptions",
-                        "Public link starts subscription enrollment",
-                        "Renewal invoices can be generated from the plan",
-                      ]
-                    : [
-                        "Public link becomes shareable instantly",
-                        "Donor picks or enters amount on the public page",
-                        "Donation invoice is created on demand",
-                      ]
-                ).map((step, index) => (
-                  <div key={step} className="rounded-2xl border border-white/10 bg-black/20 px-4 py-4">
-                    <div className="text-[11px] uppercase tracking-[0.22em] text-accent">
-                      0{index + 1}
-                    </div>
-                    <div className="mt-2 text-sm text-white/65">{step}</div>
-                  </div>
-                ))}
-              </div>
-            </div> */}
 
             <div className="flex flex-wrap gap-3">
               <button
                 onClick={() => submit(false)}
                 className="button-glow rounded-full border border-white/50 bg-white px-6 py-3 text-sm font-semibold text-black transition hover:scale-[1.02]"
               >
-                {type === "standard"
-                  ? "Generate invoice"
-                  : type === "subscription"
-                    ? "Create plan flow"
-                    : "Create share link"}
+                {flow === "standard" ? "Generate invoice" : "Create MultiPay route"}
               </button>
-              {type === "standard" ? (
+              {flow === "standard" ? (
                 <button
                   onClick={() => submit(true)}
                   className="rounded-full border border-white/10 bg-white/5 px-6 py-3 text-sm text-white/70"
@@ -509,37 +341,27 @@ export default function CreateInvoicePage() {
           </div>
         </GlassCard>
 
-        <div className="space-y-6">
+        <div className="space-y-3">
           <GlassCard>
-            <div className="text-[11px] uppercase tracking-[0.26em] text-white/40">
-              Hosted preview
-            </div>
-            <div className="mt-4 rounded-[28px] border border-white/10 bg-white/5 p-5">
+            <div className="text-[11px] uppercase tracking-[0.26em] text-white/40">Hosted preview</div>
+            <div className="mt-3 rounded-[28px] border border-white/10 bg-white/5 p-5">
               <div className="text-lg font-semibold text-white">
-                {type === "subscription"
-                  ? planName || "Subscription plan"
-                  : type === "donation"
-                    ? donationTitle || "Payment link"
-                    : customer || "New invoice"}
+                {flow === "standard" ? customer || "New invoice" : title || "MultiPay route"}
               </div>
               <div className="mt-1 text-sm text-white/55">
-                {type === "subscription"
-                  ? `${interval.label} · ${formatCurrencyAmount(Number(amount || 0), currency)}`
-                  : type === "donation"
-                    ? `Reusable link · starts at ${formatCurrencyAmount(Number(amount || 0), currency)}`
-                    : `${type} invoice · ${formatCurrencyAmount(Number(amount || 0), currency)}`}
+                {flow === "standard"
+                  ? `Single payment · ${formatCurrencyAmount(Number(amount || 0), currency)}`
+                  : `Reusable route · starts at ${formatCurrencyAmount(Number(amount || 0), currency)}`}
               </div>
-              <div className="mt-6">
+              <div className="mt-5">
                 <QrPreview label={previewLabel} />
               </div>
             </div>
           </GlassCard>
 
           <GlassCard>
-            <div className="text-[11px] uppercase tracking-[0.26em] text-white/40">
-              Distribution
-            </div>
-            <div className="mt-4 space-y-3">
+            <div className="text-[11px] uppercase tracking-[0.26em] text-white/40">Distribution</div>
+            <div className="mt-3 space-y-3">
               <button
                 onClick={handleCopy}
                 disabled={!result}
@@ -562,12 +384,10 @@ export default function CreateInvoicePage() {
 
           {result ? (
             <GlassCard className="border border-white/20">
-              <div className="text-[11px] uppercase tracking-[0.26em] text-white/40">
-                Generated result
-              </div>
-              <div className="mt-4 text-sm text-white/75">{result.summary}</div>
+              <div className="text-[11px] uppercase tracking-[0.26em] text-white/40">Generated result</div>
+              <div className="mt-3 text-sm text-white/75">{result.summary}</div>
               <div className="mt-3 text-sm text-white">{result.title}</div>
-              <div className="mt-4 font-mono text-xs text-white/55">{result.href}</div>
+              <div className="mt-3 font-mono text-xs text-white/55">{result.href}</div>
             </GlassCard>
           ) : null}
         </div>

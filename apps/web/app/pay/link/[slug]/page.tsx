@@ -5,9 +5,20 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import GlassCard from "@/components/GlassCard";
 import {
+  type Currency,
   formatCurrencyAmount,
   useDemo,
 } from "@/components/app/DemoProvider";
+
+function defaultAmountConfig(currency: Currency) {
+  if (currency === "sBTC") {
+    return { defaultAmount: 0.01, amountStep: 0.005 };
+  }
+  if (currency === "STX") {
+    return { defaultAmount: 50, amountStep: 25 };
+  }
+  return { defaultAmount: 25, amountStep: 25 };
+}
 
 function normalizeAmount(value: number, step: number, delta: number) {
   const next = value + step * delta;
@@ -23,11 +34,23 @@ export default function PublicPaymentLinkPage({
   const { state, actions } = useDemo();
   const link = state.paymentLinks.find((item) => item.slug === params.slug && item.isActive);
   const linkedPlan = state.plans.find((item) => item.id === link?.planId);
+  const availableCurrencies = link?.acceptedCurrencies ?? (link ? [link.currency] : []);
+  const [selectedCurrency, setSelectedCurrency] = useState<Currency>(
+    availableCurrencies[0] ?? "sBTC"
+  );
   const [email, setEmail] = useState("");
   const [customer, setCustomer] = useState("");
   const [seats, setSeats] = useState("");
-  const [amount, setAmount] = useState(() => String(link?.defaultAmount ?? ""));
-  const amountStep = link?.amountStep ?? 1;
+  const [amount, setAmount] = useState(() => {
+    if (!link) {
+      return "";
+    }
+    const defaults = defaultAmountConfig(availableCurrencies[0] ?? link.currency);
+    return String(link.defaultAmount ?? defaults.defaultAmount);
+  });
+  const amountStep = link?.acceptedCurrencies?.length
+    ? defaultAmountConfig(selectedCurrency).amountStep
+    : link?.amountStep ?? defaultAmountConfig(link?.currency ?? "sBTC").amountStep;
 
   const pageSummary = useMemo(() => {
     if (!link) {
@@ -39,7 +62,7 @@ export default function PublicPaymentLinkPage({
     if (link.mode === "subscription") {
       return "Capture a company name and billing email, then create the subscriber record for the selected plan.";
     }
-    return link.description || "Choose an amount, generate a one-time invoice, and continue into hosted checkout.";
+    return link.description || "Choose an asset, adjust the amount, generate a fresh invoice, and continue into hosted checkout.";
   }, [link]);
 
   if (!link) {
@@ -61,7 +84,8 @@ export default function PublicPaymentLinkPage({
     if (!link) {
       return;
     }
-    const base = Number(amount || link.defaultAmount || 0);
+    const defaults = defaultAmountConfig(selectedCurrency);
+    const base = Number(amount || link.defaultAmount || defaults.defaultAmount || 0);
     setAmount(String(normalizeAmount(base, amountStep, delta)));
   }
 
@@ -89,9 +113,10 @@ export default function PublicPaymentLinkPage({
 
     const invoice = actions.createInvoiceFromLink({
       slug: link.slug,
-      customer: "Public checkout supporter",
+      customer: "MultiPay customer",
       email,
       amount: Number(amount || 0),
+      currency: selectedCurrency,
     });
     if (invoice) {
       router.push(`/pay/${invoice.id}`);
@@ -103,26 +128,26 @@ export default function PublicPaymentLinkPage({
       <div className="mx-auto grid w-full max-w-5xl gap-8 lg:grid-cols-[1.05fr_0.95fr]">
         <div className="space-y-6">
           <div>
-            <div className="text-xs uppercase tracking-[0.35em] text-white/40">Hosted payment link</div>
+            <div className="text-xs uppercase tracking-[0.35em] text-white/40">Hosted MultiPay route</div>
             <h1 className="mt-3 text-4xl font-semibold text-white">{link.title}</h1>
             <p className="mt-3 max-w-2xl text-sm text-white/60">{pageSummary}</p>
           </div>
 
           <GlassCard className="border border-white/20">
             <div className="grid gap-3">
-              <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-sm text-white/75">
+              <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/75">
                 Merchant: {state.merchant.businessName}
               </div>
-              <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-sm text-white/75">
-                Asset: {link.currency}
+              <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/75">
+                Assets: {(link.acceptedCurrencies ?? [link.currency]).join(", ")}
               </div>
               {linkedPlan ? (
-                <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-sm text-white/75">
+                <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/75">
                   Plan: {linkedPlan.name} · {formatCurrencyAmount(linkedPlan.amount, linkedPlan.currency)}
                 </div>
               ) : null}
               {link.description ? (
-                <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-sm text-white/75">
+                <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/75">
                   {link.description}
                 </div>
               ) : null}
@@ -137,11 +162,34 @@ export default function PublicPaymentLinkPage({
           </div>
 
           <div className="mt-6 space-y-3">
-            {link.mode === "donation" ? (
+            {link.mode === "multipay" ? (
               <>
+                {availableCurrencies.length > 1 ? (
+                  <div>
+                    <div className="text-[11px] uppercase tracking-[0.22em] text-white/40">Pay with</div>
+                    <div className="mt-3 grid grid-cols-3 gap-2">
+                      {availableCurrencies.map((item) => (
+                        <button
+                          key={item}
+                          onClick={() => {
+                            setSelectedCurrency(item);
+                            setAmount(String(defaultAmountConfig(item).defaultAmount));
+                          }}
+                          className={`rounded-full px-4 py-3 text-sm transition ${
+                            selectedCurrency === item
+                              ? "border border-white/20 bg-white text-black"
+                              : "border border-white/10 bg-white/5 text-white/70"
+                          }`}
+                        >
+                          {item}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
                 <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
                   <div className="text-[11px] uppercase tracking-[0.22em] text-white/40">Amount</div>
-                  <div className="mt-4 flex items-center gap-3">
+                  <div className="mt-3 flex items-center gap-3">
                     <button
                       onClick={() => adjustAmount(-1)}
                       className="h-12 w-12 rounded-full border border-white/10 bg-black/20 text-xl text-white/75"
@@ -149,7 +197,7 @@ export default function PublicPaymentLinkPage({
                       -
                     </button>
                     <div className="flex-1 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-center text-lg font-semibold text-white">
-                      {amount ? formatCurrencyAmount(Number(amount), link.currency) : `0 ${link.currency}`}
+                      {amount ? formatCurrencyAmount(Number(amount), selectedCurrency) : `0 ${selectedCurrency}`}
                     </div>
                     <button
                       onClick={() => adjustAmount(1)}
@@ -163,7 +211,7 @@ export default function PublicPaymentLinkPage({
                       className="mt-3 w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white/75 outline-none"
                       value={amount}
                       onChange={(event) => setAmount(event.target.value)}
-                      placeholder="Enter custom amount"
+                      placeholder={`Enter amount in ${selectedCurrency}`}
                     />
                   ) : null}
                 </div>
@@ -208,7 +256,7 @@ export default function PublicPaymentLinkPage({
             >
               {link.mode === "subscription"
                 ? "Start subscription"
-                : link.mode === "donation"
+                : link.mode === "multipay"
                   ? "Generate invoice"
                   : "Open invoice"}
             </button>

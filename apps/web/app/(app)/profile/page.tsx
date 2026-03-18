@@ -14,9 +14,6 @@ const currencies: Currency[] = ["sBTC", "STX", "USDCx"];
 export default function ProfilePage() {
   const { state, actions } = useDemo();
   const [saved, setSaved] = useState(false);
-  const universalLink =
-    state.paymentLinks.find((link) => link.mode === "donation" && link.isUniversal && link.isActive) ??
-    state.paymentLinks.find((link) => link.mode === "donation" && link.isActive);
 
   function handleSave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -41,7 +38,7 @@ export default function ProfilePage() {
       />
       <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
         <GlassCard>
-          <div className="mb-4 text-sm uppercase tracking-[0.3em] text-white/40">Merchant profile</div>
+          <div className="mb-3 text-sm uppercase tracking-[0.3em] text-white/40">Merchant profile</div>
           <form onSubmit={handleSave} className="space-y-3">
             <input
               name="businessName"
@@ -97,7 +94,7 @@ export default function ProfilePage() {
         </GlassCard>
 
         <GlassCard>
-          <div className="mb-4 text-sm uppercase tracking-[0.3em] text-white/40">Connected wallets</div>
+          <div className="mb-3 text-sm uppercase tracking-[0.3em] text-white/40">Connected wallets</div>
           <div className="space-y-3 text-sm text-white/70">
             <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
               Leather · Demo connected
@@ -108,15 +105,12 @@ export default function ProfilePage() {
             <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white/80">
               Merchant slug: stackpay.app/{state.merchant.slug}
             </div>
-            <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white/80">
-              Public checkout: stackpay.app/pay/link/{universalLink?.slug ?? state.merchant.slug}
-            </div>
           </div>
         </GlassCard>
       </div>
 
       <GlassCard className="mt-6">
-        <div className="mb-4 text-sm uppercase tracking-[0.3em] text-white/40">Notifications</div>
+        <div className="mb-3 text-sm uppercase tracking-[0.3em] text-white/40">Notifications</div>
         <div className="flex flex-wrap gap-3">
           {[
             ["invoicePaid", "Invoice paid"],

@@ -34,7 +34,7 @@ export default function QrPreview({
       </div>
       <div className="mt-5 text-center">
         <div className="text-[11px] uppercase tracking-[0.22em] text-white/40">
-          Universal payment link
+          Universal QR route
         </div>
         <div className="mt-2 font-mono text-xs text-white/70">{label}</div>
       </div>

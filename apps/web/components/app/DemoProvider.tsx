@@ -9,7 +9,7 @@ import {
 } from "react";
 
 export type Currency = "sBTC" | "STX" | "USDCx";
-export type InvoiceType = "standard" | "subscription" | "donation";
+export type InvoiceType = "standard" | "subscription" | "multipay";
 export type InvoiceStatus = "draft" | "pending" | "paid" | "expired";
 export type SubscriptionStatus = "active" | "paused" | "canceled";
 export type PlanStatus = "active" | "draft" | "archived";
@@ -66,10 +66,11 @@ export type DemoPaymentLink = {
   slug: string;
   title: string;
   description?: string;
-  mode: "invoice" | "donation" | "subscription";
+  mode: "invoice" | "multipay" | "subscription";
   invoiceId?: string;
   planId?: string;
   currency: Currency;
+  acceptedCurrencies?: Currency[];
   defaultAmount?: number;
   amountStep?: number;
   allowCustomAmount?: boolean;
@@ -192,6 +193,7 @@ type PublicLinkCheckoutInput = {
   customer: string;
   email: string;
   amount?: number;
+  currency?: Currency;
   seats?: number;
 };
 
@@ -211,8 +213,9 @@ type DemoContextValue = {
       slug: string;
       title: string;
       description?: string;
-      mode: "invoice" | "donation" | "subscription";
+      mode: "invoice" | "multipay" | "subscription";
       currency: Currency;
+      acceptedCurrencies?: Currency[];
       invoiceId?: string;
       planId?: string;
       defaultAmount?: number;
@@ -220,19 +223,26 @@ type DemoContextValue = {
       allowCustomAmount?: boolean;
       isUniversal?: boolean;
     }) => DemoPaymentLink;
-    regenerateUniversalLink: () => DemoPaymentLink;
+    regenerateUniversalLink: (config?: {
+      currency?: Currency;
+      defaultAmount?: number;
+      amountStep?: number;
+      title?: string;
+      description?: string;
+    }) => DemoPaymentLink;
     createPlan: (input: PlanInput) => DemoPlan;
     addSubscriber: (input: SubscriptionInput) => DemoSubscription;
     recordRenewal: (subscriptionId: string) => DemoInvoice | null;
     createSettlementPolicy: (input: SettlementInput) => DemoSettlementPolicy;
     toggleSettlementPolicy: (policyId: string) => void;
     executeSettlement: (policyId: string) => DemoSettlementRun | null;
+    deactivatePaymentLink: (linkId: string) => void;
     createInvoiceFromLink: (input: PublicLinkCheckoutInput) => DemoInvoice | null;
     enrollFromLink: (input: PublicLinkCheckoutInput) => DemoSubscription | null;
   };
 };
 
-const STORAGE_KEY = "stackpay-demo-state-v4";
+const STORAGE_KEY = "stackpay-demo-state-v5";
 const DemoContext = createContext<DemoContextValue | null>(null);
 
 function isoAt(iso: string, secondsToAdd = 0) {
@@ -294,6 +304,10 @@ function defaultAmountConfig(currency: Currency) {
     return { defaultAmount: 50, amountStep: 25 };
   }
   return { defaultAmount: 25, amountStep: 25 };
+}
+
+function allCurrencies(): Currency[] {
+  return ["sBTC", "STX", "USDCx"];
 }
 
 function seedState(): DemoState {
@@ -375,20 +389,6 @@ function seedState(): DemoState {
       },
     ],
     paymentLinks: [
-      {
-        id: "LNK_1",
-        slug: "studio-noon",
-        title: "Studio Noon universal checkout",
-        description: "Share a single public payment entry point for custom one-time payments.",
-        mode: "donation",
-        currency: "sBTC",
-        defaultAmount: 0.025,
-        amountStep: 0.005,
-        allowCustomAmount: true,
-        isUniversal: true,
-        isActive: true,
-        createdAt: isoAt(base, -86400 * 10),
-      },
       {
         id: "LNK_2",
         slug: "studio-noon-april",
@@ -761,26 +761,27 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
         description: input.description,
         mode: input.mode,
         currency: input.currency,
+        acceptedCurrencies: input.acceptedCurrencies ?? [input.currency],
         invoiceId: input.invoiceId,
         planId: input.planId,
         defaultAmount:
-          input.mode === "donation"
+          input.mode === "multipay"
             ? currencyValue(input.defaultAmount ?? defaultAmountConfig(input.currency).defaultAmount)
             : undefined,
         amountStep:
-          input.mode === "donation"
+          input.mode === "multipay"
             ? currencyValue(input.amountStep ?? defaultAmountConfig(input.currency).amountStep)
             : undefined,
-        allowCustomAmount: input.allowCustomAmount ?? input.mode === "donation",
+        allowCustomAmount: input.allowCustomAmount ?? input.mode === "multipay",
         isUniversal: input.isUniversal,
         isActive: true,
         createdAt: new Date().toISOString(),
       };
       commit((current) => {
         const paymentLinks =
-          link.isUniversal && link.mode === "donation"
+          link.isUniversal && link.mode === "multipay"
             ? current.paymentLinks.map((item) =>
-                item.mode === "donation" && item.isUniversal ? { ...item, isActive: false } : item
+                item.mode === "multipay" && item.isUniversal ? { ...item, isActive: false } : item
               )
             : current.paymentLinks;
 
@@ -791,7 +792,8 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
       });
       return link;
     },
-    regenerateUniversalLink() {
+    regenerateUniversalLink(config) {
+      const currency = config?.currency ?? stateRef.current.merchant.defaultCurrency;
       const slug = createUniqueSlug(
         stateRef.current,
         `${stateRef.current.merchant.slug}-${Math.random().toString(36).slice(2, 6)}`,
@@ -800,12 +802,15 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
       const link = {
         id: makeId("LNK"),
         slug,
-        title: `${stateRef.current.merchant.businessName} checkout`,
-        description: "Universal public payment link for one-time customer payments.",
-        mode: "donation" as const,
-        currency: stateRef.current.merchant.defaultCurrency,
-        defaultAmount: defaultAmountConfig(stateRef.current.merchant.defaultCurrency).defaultAmount,
-        amountStep: defaultAmountConfig(stateRef.current.merchant.defaultCurrency).amountStep,
+        title: config?.title || `${stateRef.current.merchant.businessName} QR checkout`,
+        description:
+          config?.description || "Permanent universal QR route for quick daily payments.",
+        mode: "multipay" as const,
+        currency,
+        acceptedCurrencies: allCurrencies(),
+        defaultAmount:
+          config?.defaultAmount !== undefined ? currencyValue(config.defaultAmount) : undefined,
+        amountStep: config?.amountStep !== undefined ? currencyValue(config.amountStep) : undefined,
         allowCustomAmount: true,
         isUniversal: true,
         isActive: true,
@@ -813,7 +818,7 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
       };
       commit((current) => {
         const paymentLinks = current.paymentLinks.map((item) =>
-          item.mode === "donation" && item.isUniversal ? { ...item, isActive: false } : item
+          item.mode === "multipay" && item.isUniversal ? { ...item, isActive: false } : item
         );
 
         return {
@@ -974,6 +979,14 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
 
       return run;
     },
+    deactivatePaymentLink(linkId) {
+      commit((current) => ({
+        ...current,
+        paymentLinks: current.paymentLinks.map((link) =>
+          link.id === linkId ? { ...link, isActive: false } : link
+        ),
+      }));
+    },
     createInvoiceFromLink(input) {
       const link = stateRef.current.paymentLinks.find(
         (item) => item.slug === input.slug && item.isActive
@@ -990,22 +1003,27 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
         return null;
       }
 
+      const currency =
+        input.currency && (link.acceptedCurrencies ?? [link.currency]).includes(input.currency)
+          ? input.currency
+          : link.acceptedCurrencies?.[0] ?? link.currency;
+      const defaults = defaultAmountConfig(currency);
       const amount = currencyValue(
-        input.amount && input.amount > 0 ? input.amount : link.defaultAmount ?? 0
+        input.amount && input.amount > 0 ? input.amount : link.defaultAmount ?? defaults.defaultAmount
       );
       if (amount <= 0) {
         return null;
       }
 
       return actions.createInvoice({
-        type: "donation",
+        type: "multipay",
         customer: input.customer || "Public checkout customer",
         email: input.email,
         amount,
-        currency: link.currency,
+        currency,
         description: link.description || `${link.title} contribution`,
         expirationHours: 24,
-        recipientLabel: "Hosted payment link",
+        recipientLabel: "Hosted MultiPay route",
         metadata: `link=${link.slug}`,
       });
     },

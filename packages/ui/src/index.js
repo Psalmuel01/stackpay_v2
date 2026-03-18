@@ -2,15 +2,16 @@ export const appNavigation = [
   { label: "Dashboard", href: "/dashboard" },
   { label: "Create Invoice", href: "/create-invoice" },
   { label: "Invoices", href: "/invoices" },
-  { label: "Payment Links", href: "/payment-links" },
   { label: "Subscriptions", href: "/subscriptions" },
+  { label: "QR Link", href: "/qr-link" },
 ];
 
 export const mobileNavigation = [
   { label: "Dashboard", href: "/dashboard" },
   { label: "Create", href: "/create-invoice" },
   { label: "Invoices", href: "/invoices" },
-  { label: "Links", href: "/payment-links" },
+  { label: "Subs", href: "/subscriptions" },
+  { label: "QR", href: "/qr-link" },
   { label: "Settings", href: "/settings" },
 ];
 

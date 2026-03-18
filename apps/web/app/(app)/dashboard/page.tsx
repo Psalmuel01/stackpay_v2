@@ -132,7 +132,7 @@ export default function DashboardPage() {
         <GlassCard>
           <div className="text-[11px] uppercase tracking-[0.26em] text-white/40">Open invoices</div>
           <div className="mt-3 text-3xl font-semibold text-white">{pendingInvoices.length}</div>
-          <div className="mt-2 text-sm text-white/55">Hosted payment links ready to share</div>
+          <div className="mt-2 text-sm text-white/55">Invoices currently awaiting payment</div>
         </GlassCard>
         <GlassCard>
           <div className="text-[11px] uppercase tracking-[0.26em] text-white/40">Subscriptions</div>
