@@ -1,10 +1,11 @@
 import GlassCard from "@/components/GlassCard";
 import PageHeader from "@/components/app/PageHeader";
+import StatusBadge from "@/components/app/StatusBadge";
 
 const invoices = [
-  { hash: "0x8c...a41", amount: "0.018 sBTC", status: "Settled" },
-  { hash: "0x1f...19d", amount: "450 USDCx", status: "Pending" },
-  { hash: "0x9b...7ef", amount: "12 STX", status: "Expired" }
+  { hash: "INV_9821", amount: "0.018 sBTC", customer: "Studio Noon", status: "Pending" },
+  { hash: "INV_9815", amount: "450 USDCx", customer: "Mint Labs", status: "Settled" },
+  { hash: "INV_9798", amount: "12 STX", customer: "Relay FM", status: "Expired" },
 ];
 
 export default function InvoicesPage() {
@@ -12,11 +13,11 @@ export default function InvoicesPage() {
     <div>
       <PageHeader
         title="Invoices"
-        subtitle="Filter, search, and share payment links across all invoice types."
+        subtitle="Search payment requests, inspect state transitions, and jump into follow-up actions."
       />
-      <GlassCard>
-        <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div className="flex gap-2">
+      <GlassCard className="border border-accent/20">
+        <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-wrap gap-2">
             {["All", "Pending", "Settled", "Expired"].map((tab, idx) => (
               <button
                 key={tab}
@@ -31,8 +32,8 @@ export default function InvoicesPage() {
             ))}
           </div>
           <input
-            className="w-full rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/70 md:w-72"
-            placeholder="Search by invoice hash"
+            className="w-full rounded-full border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70 outline-none lg:w-80"
+            placeholder="Search by invoice hash, customer, or amount"
           />
         </div>
 
@@ -40,17 +41,15 @@ export default function InvoicesPage() {
           {invoices.map((invoice) => (
             <div
               key={invoice.hash}
-              className="flex flex-col gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-3 md:flex-row md:items-center md:justify-between"
+              className="grid gap-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-4 md:grid-cols-[1.2fr_0.8fr_auto]"
             >
               <div>
                 <div className="text-sm font-semibold text-white">{invoice.hash}</div>
-                <div className="text-xs text-white/40">Created 2 hours ago</div>
+                <div className="mt-1 text-sm text-white/55">{invoice.customer}</div>
               </div>
-              <div className="text-sm text-white/80">{invoice.amount}</div>
-              <div className="flex items-center gap-3">
-                <span className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs text-white/70">
-                  {invoice.status}
-                </span>
+              <div className="text-sm text-white/78">{invoice.amount}</div>
+              <div className="flex items-center justify-between gap-3 md:justify-end">
+                <StatusBadge label={invoice.status} />
                 <button className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs text-white/70">
                   View
                 </button>

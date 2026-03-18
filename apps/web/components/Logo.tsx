@@ -42,10 +42,10 @@ export default function Logo({ size = 40 }: { size?: number }) {
         </svg>
       </div>
       <div className="leading-tight">
-        <div className="text-sm font-semibold uppercase tracking-[0.2em] text-white/70">
+        <div className="text- font-semibold uppercase tracking-[0.2em] text-white/70">
           StackPay
         </div>
-        <div className="text-xs text-white/40">Bitcoin-native payments</div>
+        {/* <div className="text-xs text-white/40">Bitcoin-native payments</div> */}
       </div>
     </div>
   );

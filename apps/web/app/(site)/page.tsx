@@ -71,7 +71,7 @@ export default function HomePage() {
           <div className="mx-auto flex w-full max-w-6xl flex-col gap-10 px-6 md:flex-row md:items-center md:justify-between">
             <div className="max-w-2xl space-y-6">
               <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 py-2 text-xs uppercase tracking-[0.3em] text-white/60">
-                <span className="accent-do">Bitcoin-native payment gateway</span>
+                <span className="accent-dot text-[11px]">Bitcoin-native payment gateway</span>
               </div>
               <h1 className="text-4xl font-semibold leading-tight text-white md:text-6xl">
                 Payments on Stacks without <span className="accent-underline">borders</span>.
@@ -94,9 +94,9 @@ export default function HomePage() {
                 </Link>
               </div>
               <div className="flex flex-wrap items-center gap-4 text-xs uppercase tracking-[0.3em] text-white/40">
-                <span className="accent-dot">On-chain invoices</span>
-                <span className="accent-dot">Live webhooks</span>
-                <span className="accent-dot">Non-custodial</span>
+                <span className="accent-">On-chain invoices</span>
+                <span className="accent-">Live webhooks</span>
+                <span className="accent-">Non-custodial</span>
               </div>
             </div>
           </div>

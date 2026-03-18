@@ -46,7 +46,7 @@
 
 (define-constant CURRENCY_STX "STX")
 (define-constant CURRENCY_SBTC "sBTC")
-(define-constant CURRENCY_USDC "USDC")
+(define-constant CURRENCY_USDC "USDCx")
 
 ;; data-vars
 
@@ -243,7 +243,7 @@
     (txid (buff 32))
   )
   (let ((proc (unwrap! (var-get processor) ERR_UNAUTHORIZED)))
-    (asserts! (is-eq tx-sender proc) ERR_UNAUTHORIZED)
+    (asserts! (is-eq contract-caller proc) ERR_UNAUTHORIZED)
     (let ((inv (unwrap! (map-get? invoices { invoice-id: invoice-id })
         ERR_INVOICE_NOT_FOUND
       )))
