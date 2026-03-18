@@ -1,7 +1,10 @@
 ;; StackPay Payment Processor (Iteration: Balance + Withdrawals)
 
 (use-trait invoice-trait .architecture.invoice-trait)
-(use-trait sip-010-trait 'ST1NXBK3K5YYMD6FD41MVNP3JS1GABZ8TRVX023PT.sip-010-trait-ft-standard.sip-010-trait)
+
+(define-trait sip-010-trait (
+    (transfer (uint principal principal (optional (buff 34))) (response bool uint))
+))
 
 ;; constants
 (define-constant ERR_UNAUTHORIZED (err u400))
@@ -13,6 +16,7 @@
 (define-constant ERR_TOO_EARLY (err u411))
 (define-constant ERR_MAX_PAYMENTS_EXCEEDED (err u412))
 (define-constant ERR_INSUFFICIENT_BALANCE (err u413))
+(define-constant ERR_ASSET_GUARD (err u414))
 
 (define-constant CURRENCY_STX "STX")
 (define-constant CURRENCY_SBTC "sBTC")
@@ -102,7 +106,6 @@
     )
     (let (
             (payer tx-sender)
-            (contract-account (as-contract tx-sender))
             (inv (unwrap! (contract-call? .architecture get-invoice invoice-id)
                 ERR_PAYMENT_FAILED
             ))
@@ -112,7 +115,7 @@
         (asserts! (> amount u0) ERR_INVALID_AMOUNT)
         (asserts! (is-eq amount (get amount inv)) ERR_INVALID_AMOUNT)
         ;; funds deposited to contract, not merchant
-        (try! (stx-transfer? amount payer contract-account))
+        (try! (stx-transfer? amount payer current-contract))
         (credit-balance merchant CURRENCY_STX amount)
         (try! (contract-call? .architecture process-payment invoice-id payer amount
             tx-id
@@ -129,7 +132,6 @@
     )
     (let (
             (payer tx-sender)
-            (contract-account (as-contract tx-sender))
             (inv (unwrap! (contract-call? .architecture get-invoice invoice-id)
                 ERR_PAYMENT_FAILED
             ))
@@ -154,7 +156,7 @@
         (asserts! (is-eq amount (get amount inv)) ERR_INVALID_AMOUNT)
 
         ;; transfer to contract
-        (try! (contract-call? token transfer amount payer contract-account none))
+        (try! (contract-call? token transfer amount payer current-contract none))
         (credit-balance merchant currency amount)
         (try! (contract-call? .architecture process-payment invoice-id payer amount
             tx-id
@@ -169,9 +171,10 @@
         (token <sip-010-trait>)
     )
     (let (
+            (merchant tx-sender)
             (bal (unwrap!
                 (map-get? balances {
-                    merchant: tx-sender,
+                    merchant: merchant,
                     currency: currency,
                 })
                 ERR_INSUFFICIENT_BALANCE
@@ -182,9 +185,15 @@
         )
         (asserts! (> amount u0) ERR_INVALID_AMOUNT)
         (asserts! (>= (get amount bal) amount) ERR_INSUFFICIENT_BALANCE)
-        (try! (debit-balance tx-sender currency amount))
+        (try! (debit-balance merchant currency amount))
         (if (is-eq currency CURRENCY_STX)
-            (try! (as-contract (stx-transfer? payout tx-sender tx-sender)))
+            (unwrap!
+                (as-contract? ((with-stx payout))
+                    (unwrap! (stx-transfer? payout current-contract merchant) ERR_PAYMENT_FAILED)
+                    true
+                )
+                ERR_ASSET_GUARD
+            )
             (let (
                     (info (unwrap!
                         (map-get? supported-tokens { currency: currency })
@@ -194,7 +203,16 @@
                 )
                 (asserts! (get is-active info) ERR_INVALID_TOKEN)
                 (asserts! (is-eq reg (contract-of token)) ERR_INVALID_TOKEN)
-                (try! (as-contract (contract-call? token transfer payout tx-sender tx-sender none)))
+                (unwrap!
+                    (as-contract? ((with-ft reg "*" payout))
+                        (unwrap!
+                            (contract-call? token transfer payout current-contract merchant none)
+                            ERR_PAYMENT_FAILED
+                        )
+                        true
+                    )
+                    ERR_ASSET_GUARD
+                )
             )
         )
         (ok {

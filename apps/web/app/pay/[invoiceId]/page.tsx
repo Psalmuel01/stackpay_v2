@@ -64,7 +64,7 @@ export default function HostedPaymentPage({
         <div className="space-y-6">
           <GlassCard>
             <div className="text-[11px] uppercase tracking-[0.24em] text-white/40">Checkout</div>
-            <div className="mt-4 space-y-4 rounded-2xl border border-white/10 bg-white/5 p-5">
+            <div className="mt-4 space-y-3 rounded-2xl border border-white/10 bg-white/5 p-5">
               <div className="text-sm text-white/70">
                 Next step for MVP: bind this screen to a real invoice lookup, then call the processor
                 contract based on selected currency.

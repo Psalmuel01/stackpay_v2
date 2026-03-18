@@ -11,7 +11,7 @@ export default function ProfilePage() {
       <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
         <GlassCard>
           <div className="mb-4 text-sm uppercase tracking-[0.3em] text-white/40">Merchant profile</div>
-          <div className="space-y-4">
+          <div className="space-y-3">
             <input
               className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70"
               placeholder="Business name"
@@ -46,11 +46,10 @@ export default function ProfilePage() {
           ].map((item, idx) => (
             <button
               key={item}
-              className={`rounded-full px-4 py-2 text-xs transition ${
-                idx < 2
+              className={`rounded-full px-4 py-2 text-xs transition ${idx < 2
                   ? "border border-white/20 bg-white text-black"
                   : "border border-white/10 bg-white/5 text-white/70"
-              }`}
+                }`}
             >
               {item}
             </button>

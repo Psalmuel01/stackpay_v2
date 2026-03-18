@@ -30,7 +30,7 @@ export default function TrendChart({
   const max = Math.max(...bars, 1);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <div className="relative overflow-hidden rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))] p-4">
         <svg viewBox={`0 0 ${width} ${height}`} className="h-[220px] w-full">
           <defs>

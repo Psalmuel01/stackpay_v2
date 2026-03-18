@@ -55,9 +55,8 @@ export default function ExplorerPage() {
             ].map(([label, value], index) => (
               <div
                 key={label}
-                className={`rounded-2xl border px-4 py-4 ${
-                  index === 1 ? "border-accent/20 bg-accent/5" : "border-white/10 bg-white/5"
-                }`}
+                className={`rounded-2xl border px-4 py-4 ${index === 1 ? "border-accent/20 bg-accent/5" : "border-white/10 bg-white/5"
+                  }`}
               >
                 <div className="text-[11px] uppercase tracking-[0.24em] text-white/40">
                   {label}
@@ -96,10 +95,10 @@ export default function ExplorerPage() {
             ))}
           </div>
           <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-4">
-            <div className="text-[11px] uppercase tracking-[0.22em] text-white/40">
+            <div className="text-[11px] uppercase tracking-[0.22em] text-white/40"> 
               Timeline
             </div>
-            <div className="mt-4 space-y-4">
+            <div className="mt-4 space-y-3">
               {[
                 "Invoice created and indexed",
                 "Customer paid from Xverse wallet",
