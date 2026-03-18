@@ -1,31 +1,51 @@
+"use client";
+
+import { useState } from "react";
+import Link from "next/link";
 import GlassCard from "@/components/GlassCard";
 import PageHeader from "@/components/app/PageHeader";
 import QrPreview from "@/components/app/QrPreview";
 import StatusBadge from "@/components/app/StatusBadge";
-
-const channels = [
-  { name: "Countertop QR", description: "Tap-to-pay at checkout desks", status: "Active" },
-  { name: "Payment link", description: "Send by email, DM, or invoice receipt", status: "Active" },
-  { name: "POS embed", description: "Use inside your in-store tablet flow", status: "Draft" },
-];
+import { useDemo } from "@/components/app/DemoProvider";
 
 export default function QrLinkPage() {
+  const { state, actions } = useDemo();
+  const universalLink =
+    state.paymentLinks.find((link) => link.mode === "donation" && link.isActive) ||
+    state.paymentLinks[0];
+  const [copied, setCopied] = useState(false);
+
+  async function handleCopy() {
+    if (!universalLink) {
+      return;
+    }
+    await navigator.clipboard.writeText(`${window.location.origin}/pay/link/${universalLink.slug}`);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1800);
+  }
+
+  const channels = [
+    { name: "Countertop QR", description: "Tap-to-pay at checkout desks", status: "Active" },
+    { name: "Payment link", description: "Share through email, DM, and receipts", status: "Active" },
+    { name: "POS embed", description: "Resolved via hosted page or invoice routing", status: "Draft" },
+  ];
+
   return (
     <div>
       <PageHeader
         title="QR Link"
-        subtitle="Generate reusable payment entry points for in-person and shared payment flows."
+        subtitle="Generate reusable payment entry points for in-person and shared payment flows, then open the live hosted link route from the same demo state."
       />
 
       <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
-        <GlassCard className="border border-accent/20">
+        <GlassCard className="border border-white/20">
           <div className="mb-5 flex items-center justify-between">
             <div>
               <div className="text-[11px] uppercase tracking-[0.26em] text-white/40">
                 Universal payment link
               </div>
               <div className="mt-2 text-xl font-semibold text-white">
-                Point your customer to one stable entry point
+                Point customers to one stable payment entry point
               </div>
             </div>
             <StatusBadge label="Active" />
@@ -33,9 +53,9 @@ export default function QrLinkPage() {
 
           <div className="grid gap-4 md:grid-cols-2">
             {[
-              ["Destination", "Main settlement wallet"],
-              ["Currency mode", "Merchant-selectable"],
-              ["QR refresh", "Static"],
+              ["Slug", universalLink?.slug ?? state.merchant.slug],
+              ["Currency mode", state.merchant.defaultCurrency],
+              ["QR refresh", "Regeneratable"],
               ["Fallback", "Hosted payment page"],
             ].map(([label, value]) => (
               <div key={label} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4">
@@ -54,8 +74,8 @@ export default function QrLinkPage() {
             <div className="mt-4 grid gap-3 md:grid-cols-3">
               {[
                 "Customer scans QR or opens link",
-                "Hosted page resolves active invoice or collection mode",
-                "Wallet signs on Stacks testnet and receipt is issued",
+                "Hosted page resolves invoice, donation, or subscription mode",
+                "Checkout continues into the invoice payment surface",
               ].map((step, index) => (
                 <div key={step} className="rounded-2xl border border-white/10 bg-black/20 px-4 py-4">
                   <div className="text-[11px] uppercase tracking-[0.22em] text-accent">
@@ -69,15 +89,27 @@ export default function QrLinkPage() {
         </GlassCard>
 
         <GlassCard>
-          <QrPreview label="stackpay.app/pay/merchant/studio-noon" />
+          <QrPreview label={`stackpay.app/pay/link/${universalLink?.slug ?? state.merchant.slug}`} />
           <div className="mt-5 flex gap-3">
-            <button className="flex-1 rounded-full border border-accent/35 bg-white px-4 py-3 text-sm font-semibold text-black">
+            <button
+              onClick={() => actions.regenerateUniversalLink()}
+              className="flex-1 rounded-full border border-white/35 bg-white px-4 py-3 text-sm font-semibold text-black"
+            >
               Regenerate
             </button>
-            <button className="flex-1 rounded-full border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70">
-              Copy Link
+            <button
+              onClick={handleCopy}
+              className="flex-1 rounded-full border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70"
+            >
+              {copied ? "Copied" : "Copy link"}
             </button>
           </div>
+          <Link
+            href={`/pay/link/${universalLink?.slug ?? state.merchant.slug}`}
+            className="mt-3 flex w-full items-center justify-center rounded-full border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70"
+          >
+            Open hosted route
+          </Link>
         </GlassCard>
       </div>
 
@@ -91,7 +123,7 @@ export default function QrLinkPage() {
               <div
                 key={channel.name}
                 className={`rounded-2xl border px-4 py-4 ${
-                  index === 0 ? "border-accent/20 bg-accent/5" : "border-white/10 bg-white/5"
+                  index === 0 ? "border-white/20 bg-accent/5" : "border-white/10 bg-white/5"
                 }`}
               >
                 <div className="flex items-start justify-between gap-4">
@@ -111,18 +143,16 @@ export default function QrLinkPage() {
             Latest generated links
           </div>
           <div className="space-y-3">
-            {[
-              ["Countertop terminal", "stackpay.app/pay/merchant/studio-noon", "Updated 4m ago"],
-              ["Expo booth poster", "stackpay.app/pay/merchant/booth-west", "Updated yesterday"],
-              ["Podcast QR insert", "stackpay.app/pay/merchant/relay-store", "Updated 2d ago"],
-            ].map(([name, link, updated]) => (
+            {state.paymentLinks.slice(0, 3).map((link) => (
               <div
-                key={link}
+                key={link.id}
                 className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4"
               >
-                <div className="text-sm font-medium text-white">{name}</div>
-                <div className="mt-2 font-mono text-xs text-white/65">{link}</div>
-                <div className="mt-3 text-xs text-white/40">{updated}</div>
+                <div className="text-sm font-medium text-white">{link.title}</div>
+                <div className="mt-2 font-mono text-xs text-white/65">
+                  stackpay.app/pay/link/{link.slug}
+                </div>
+                <div className="mt-3 text-xs text-white/40">{link.mode}</div>
               </div>
             ))}
           </div>

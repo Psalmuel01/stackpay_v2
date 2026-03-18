@@ -116,9 +116,8 @@ export default function HomePage() {
                 return (
                   <div
                     key={feature.title}
-                    className={`glass group rounded-2xl p-6 transition hover:border-white/30 ${
-                      accent ? "border-accent/30" : ""
-                    }`}
+                    className={`glass group rounded-2xl p-6 transition hover:border-white/30 ${accent ? "border-white/30" : ""
+                      }`}
                   >
                     <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-white/5">
                       <Icon className={`h-5 w-5 ${accent ? "text-accent" : "text-white/70"}`} />
@@ -170,9 +169,8 @@ export default function HomePage() {
                   {supportedCurrencies.map((token, idx) => (
                     <div
                       key={token.symbol}
-                      className={`glass-strong rounded-2xl px-6 py-4 ${
-                        idx === 2 ? "border border-accent/30" : ""
-                      }`}
+                      className={`glass-strong rounded-2xl px-6 py-4 ${idx === 2 ? "border border-white/30" : ""
+                        }`}
                     >
                       <div className="flex items-center gap-3">
                         <span className={`h-2.5 w-2.5 rounded-full ${token.tone}`} />
@@ -207,9 +205,8 @@ export default function HomePage() {
                   ].map((item, idx) => (
                     <div
                       key={item}
-                      className={`glass rounded-xl px-4 py-3 text-sm text-white/70 ${
-                        idx === 1 ? "border border-accent/30" : ""
-                      }`}
+                      className={`glass rounded-xl px-4 py-3 text-sm text-white/70 ${idx === 1 ? "border border-white/30" : ""
+                        }`}
                     >
                       {item}
                     </div>
@@ -222,7 +219,7 @@ export default function HomePage() {
                   <span className="text-accent">stackpay sdk</span>
                 </div>
                 <pre className="whitespace-pre-wrap leading-5">
-{`npm install @stackpay/sdk\n\nimport { StackPay } from "@stackpay/sdk";\n\nconst client = new StackPay({ apiKey: process.env.STACKPAY_API_KEY });\n\nconst invoice = await client.invoices.create({\n  type: "standard",\n  currency: "sBTC",\n  amount: 0.018,\n  description: "April subscription",\n});`}
+                  {`npm install @stackpay/sdk\n\nimport { StackPay } from "@stackpay/sdk";\n\nconst client = new StackPay({ apiKey: process.env.STACKPAY_API_KEY });\n\nconst invoice = await client.invoices.create({\n  type: "standard",\n  currency: "sBTC",\n  amount: 0.018,\n  description: "April subscription",\n});`}
                 </pre>
               </div>
             </div>
