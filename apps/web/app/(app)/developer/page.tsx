@@ -1,5 +1,6 @@
 import GlassCard from "@/components/GlassCard";
 import PageHeader from "@/components/app/PageHeader";
+import { apiResources, webhookEvents } from "@stackpay/integrations";
 
 export default function DeveloperPage() {
   return (
@@ -26,7 +27,9 @@ export default function DeveloperPage() {
           <div className="mb-4 text-sm uppercase tracking-[0.3em] text-white/40">Webhooks</div>
           <div className="space-y-3 text-sm text-white/70">
             <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">Endpoint: https://api.stackpay.app/webhooks</div>
-            <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">Events: invoice.created, invoice.paid</div>
+            <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
+              Events: {webhookEvents.slice(0, 4).join(", ")}
+            </div>
           </div>
         </GlassCard>
       </div>
@@ -36,6 +39,23 @@ export default function DeveloperPage() {
         <pre className="whitespace-pre-wrap font-mono text-xs text-white/70">
 {`npm install @stackpay/sdk\n\nimport { StackPay } from "@stackpay/sdk";\n\nconst client = new StackPay({ apiKey: process.env.STACKPAY_API_KEY });\nconst invoice = await client.invoices.create({ amount: 0.012, currency: "sBTC" });`}
         </pre>
+      </GlassCard>
+
+      <GlassCard className="mt-6">
+        <div className="mb-4 text-sm uppercase tracking-[0.3em] text-white/40">REST surface</div>
+        <div className="space-y-3">
+          {apiResources.map((resource) => (
+            <div
+              key={`${resource.method}-${resource.path}`}
+              className="rounded-xl border border-white/10 bg-white/5 px-4 py-3"
+            >
+              <div className="font-mono text-xs text-accent">
+                {resource.method} {resource.path}
+              </div>
+              <div className="mt-2 text-sm text-white/70">{resource.purpose}</div>
+            </div>
+          ))}
+        </div>
       </GlassCard>
     </div>
   );

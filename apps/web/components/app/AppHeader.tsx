@@ -4,16 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import Logo from "@/components/Logo";
 import ConnectWalletButton from "@/components/app/ConnectWalletButton";
-
-const appNav = [
-  { label: "Explore", href: "/explorer" },
-  { label: "Create Invoice", href: "/create-invoice" },
-  { label: "Dashboard", href: "/dashboard" },
-  { label: "Profile", href: "/profile" },
-  { label: "QR Link", href: "/qr-link" },
-  { label: "Developer", href: "/developer" },
-  // { label: "Settlements", href: "/settlements" }
-];
+import { appNavigation } from "@stackpay/ui";
 
 export default function AppHeader() {
   const pathname = usePathname();
@@ -26,7 +17,7 @@ export default function AppHeader() {
         </Link>
 
         <nav className="hidden items-center gap-2 rounded-full border border-white/10 bg-white/5 p-1 text-[13px] text-white/70 xl:flex">
-          {appNav.map((item) => {
+          {appNavigation.map((item) => {
             const active = pathname?.startsWith(item.href);
             return (
               <Link

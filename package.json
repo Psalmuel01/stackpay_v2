@@ -3,13 +3,19 @@
   "private": true,
   "workspaces": [
     "apps/*",
-    "packages/*"
+    "packages/*",
+    "packages/contracts/*"
   ],
   "scripts": {
-    "dev": "npm run -w @stackpay/web dev",
-    "build": "npm run -w @stackpay/web build",
+    "dev": "npm run dev:web",
+    "dev:web": "npm run -w @stackpay/web dev",
+    "build": "npm run build:web",
+    "build:web": "npm run -w @stackpay/web build",
     "start": "npm run -w @stackpay/web start",
-    "lint": "npm run -w @stackpay/web lint",
-    "dev:api": "npm run -w @stackpay/api dev"
+    "lint": "npm run lint:web",
+    "lint:web": "npm run -w @stackpay/web lint",
+    "dev:api": "npm run -w @stackpay/api dev",
+    "start:api": "npm run -w @stackpay/api start",
+    "test:contracts": "npm run -w @stackpay/contracts test"
   }
 }

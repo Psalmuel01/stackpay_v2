@@ -1,5 +1,6 @@
 import Link from "next/link";
 import Logo from "@/components/Logo";
+import { sitePrimaryActions } from "@stackpay/ui";
 
 export default function SiteHeader() {
   return (
@@ -10,18 +11,19 @@ export default function SiteHeader() {
         </Link>
 
         <div className="flex items-center gap-3">
-          <Link
-            href="/docs"
-            className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm text-white/70 transition hover:border-white/30 hover:text-white"
-          >
-            View Docs
-          </Link>
-          <Link
-            href="/explorer"
-            className="button-glow inline-flex items-center gap-2 rounded-full border border-white/20 bg-white px-5 py-2 text-sm font-semibold text-black transition hover:scale-[1.02]"
-          >
-            Get Started
-          </Link>
+          {sitePrimaryActions.map((item, index) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={
+                index === 0
+                  ? "rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm text-white/70 transition hover:border-white/30 hover:text-white"
+                  : "button-glow inline-flex items-center gap-2 rounded-full border border-white/20 bg-white px-5 py-2 text-sm font-semibold text-black transition hover:scale-[1.02]"
+              }
+            >
+              {item.label}
+            </Link>
+          ))}
         </div>
       </div>
     </header>

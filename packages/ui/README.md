@@ -1,3 +1,3 @@
 # UI Package
 
-Shared UI primitives for StackPay.
+Shared navigation metadata and presentational surface definitions for StackPay apps.

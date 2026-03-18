@@ -1,5 +1,6 @@
 import Footer from "@/components/Footer";
 import { ArrowRight, BadgeCheck, Globe, Lock, Sparkles, Workflow } from "lucide-react";
+import { supportedCurrencies } from "@stackpay/domain";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 
@@ -54,12 +55,6 @@ const steps = [
     description:
       "Funds move on-chain to your wallets with configurable settlement rules and alerts."
   }
-];
-
-const currencies = [
-  { label: "sBTC", sub: "Bitcoin via Stacks", tone: "bg-emerald-400" },
-  { label: "STX", sub: "Stacks native", tone: "bg-sky-400" },
-  { label: "USDCx", sub: "Stable settlement", tone: "bg-amber-300" }
 ];
 
 export default function HomePage() {
@@ -172,18 +167,20 @@ export default function HomePage() {
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-4">
-                  {currencies.map((token, idx) => (
+                  {supportedCurrencies.map((token, idx) => (
                     <div
-                      key={token.label}
+                      key={token.symbol}
                       className={`glass-strong rounded-2xl px-6 py-4 ${
                         idx === 2 ? "border border-accent/30" : ""
                       }`}
                     >
                       <div className="flex items-center gap-3">
                         <span className={`h-2.5 w-2.5 rounded-full ${token.tone}`} />
-                        <span className="text-lg font-semibold">{token.label}</span>
+                        <span className="text-lg font-semibold">{token.symbol}</span>
                       </div>
-                      <div className="mt-2 text-xs uppercase tracking-[0.3em] text-white/50">{token.sub}</div>
+                      <div className="mt-2 text-xs uppercase tracking-[0.3em] text-white/50">
+                        {token.description}
+                      </div>
                     </div>
                   ))}
                 </div>

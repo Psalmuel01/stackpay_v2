@@ -1,3 +1,3 @@
 # Config Package
 
-Shared configuration presets for StackPay.
+Shared API defaults, network targets, and environment key definitions for StackPay.

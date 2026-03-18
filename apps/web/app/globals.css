@@ -4,6 +4,8 @@
 
 :root {
   color-scheme: dark;
+  --font-sans: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
+  --font-mono: "SFMono-Regular", "Menlo", "Monaco", monospace;
 }
 
 * {
@@ -18,12 +20,18 @@ body {
 
 body {
   margin: 0;
-  font-family: var(--font-bricolage), ui-sans-serif, system-ui;
+  font-family: var(--font-sans);
   background: radial-gradient(1200px 800px at 75% 15%, rgba(255, 255, 255, 0.07), transparent 55%),
     radial-gradient(800px 600px at 20% 85%, rgba(255, 255, 255, 0.05), transparent 60%),
     #070707;
   color: #f5f5f5;
   font-feature-settings: "ss01" 1, "ss02" 1, "cv01" 1;
+}
+
+code,
+pre,
+.font-mono {
+  font-family: var(--font-mono);
 }
 
 body::before {

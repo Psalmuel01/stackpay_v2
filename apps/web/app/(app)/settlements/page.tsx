@@ -64,10 +64,10 @@ export default function SettlementsPage() {
         </div>
         <div className="space-y-3 text-sm text-white/70">
           <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4">
-            0x92...f4c -> Main Wallet -> 1.2 sBTC -> completed 14m ago
+            0x92...f4c - Main Wallet - 1.2 sBTC - completed 14m ago
           </div>
           <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4">
-            0x44...9aa -> Treasury Wallet -> 4,200 USDCx -> completed yesterday
+            0x44...9aa - Treasury Wallet - 4,200 USDCx - completed yesterday
           </div>
         </div>
       </GlassCard>
