@@ -1,13 +1,15 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import Logo from "@/components/Logo";
 import ConnectWalletButton from "@/components/app/ConnectWalletButton";
-import { appNavigation } from "@stackpay/ui";
+import { appNavigation, settingsNavigation } from "@stackpay/ui";
 
 export default function AppHeader() {
   const pathname = usePathname();
+  const [open, setOpen] = useState(false);
 
   return (
     <header className="sticky top-0 z-40 w-full border-b border-white/5 bg-black/30 backdrop-blur">
@@ -31,6 +33,44 @@ export default function AppHeader() {
               </Link>
             );
           })}
+          <div className="relative">
+            <button
+              onClick={() => setOpen((value) => !value)}
+              className={`rounded-full px-4 py-2 transition ${
+                settingsNavigation.some((item) => pathname?.startsWith(item.href))
+                  ? "pill-active text-white"
+                  : "hover:text-white"
+              }`}
+            >
+              Settings
+            </button>
+            {open ? (
+              <div className="absolute right-0 top-[calc(100%+12px)] w-56 rounded-3xl border border-white/10 bg-[#0a0a0a]/95 p-3 shadow-[0_20px_60px_rgba(0,0,0,0.45)] backdrop-blur">
+                <div className="mb-2 px-3 text-[11px] uppercase tracking-[0.24em] text-white/35">
+                  Merchant controls
+                </div>
+                <div className="space-y-1">
+                  {settingsNavigation.map((item) => {
+                    const active = pathname?.startsWith(item.href);
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        onClick={() => setOpen(false)}
+                        className={`block rounded-2xl px-3 py-3 text-sm transition ${
+                          active
+                            ? "bg-white text-black"
+                            : "bg-white/5 text-white/70 hover:bg-white/10 hover:text-white"
+                        }`}
+                      >
+                        {item.label}
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+          </div>
         </nav>
 
         <ConnectWalletButton />

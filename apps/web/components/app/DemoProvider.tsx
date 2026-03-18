@@ -65,10 +65,14 @@ export type DemoPaymentLink = {
   id: string;
   slug: string;
   title: string;
+  description?: string;
   mode: "invoice" | "donation" | "subscription";
   invoiceId?: string;
   planId?: string;
   currency: Currency;
+  suggestedAmounts?: number[];
+  allowCustomAmount?: boolean;
+  isUniversal?: boolean;
   isActive: boolean;
   createdAt: string;
 };
@@ -187,6 +191,7 @@ type PublicLinkCheckoutInput = {
   customer: string;
   email: string;
   amount?: number;
+  seats?: number;
 };
 
 type DemoContextValue = {
@@ -204,10 +209,14 @@ type DemoContextValue = {
     createPaymentLink: (input: {
       slug: string;
       title: string;
+      description?: string;
       mode: "invoice" | "donation" | "subscription";
       currency: Currency;
       invoiceId?: string;
       planId?: string;
+      suggestedAmounts?: number[];
+      allowCustomAmount?: boolean;
+      isUniversal?: boolean;
     }) => DemoPaymentLink;
     regenerateUniversalLink: () => DemoPaymentLink;
     createPlan: (input: PlanInput) => DemoPlan;
@@ -221,7 +230,7 @@ type DemoContextValue = {
   };
 };
 
-const STORAGE_KEY = "stackpay-demo-state-v2";
+const STORAGE_KEY = "stackpay-demo-state-v3";
 const DemoContext = createContext<DemoContextValue | null>(null);
 
 function isoAt(iso: string, secondsToAdd = 0) {
@@ -250,6 +259,39 @@ function makeSecret(prefix: string) {
 
 function makeTxId() {
   return `0x${Math.random().toString(16).slice(2).padEnd(16, "0")}`;
+}
+
+function normalizeSlug(value: string) {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function createUniqueSlug(state: DemoState, value: string, fallback: string) {
+  const base = normalizeSlug(value) || normalizeSlug(fallback) || `link-${Date.now().toString().slice(-4)}`;
+  const existing = new Set(state.paymentLinks.map((link) => link.slug));
+  if (!existing.has(base)) {
+    return base;
+  }
+
+  let attempt = 2;
+  while (existing.has(`${base}-${attempt}`)) {
+    attempt += 1;
+  }
+  return `${base}-${attempt}`;
+}
+
+function defaultSuggestedAmounts(currency: Currency) {
+  if (currency === "sBTC") {
+    return [0.01, 0.025, 0.05];
+  }
+  if (currency === "STX") {
+    return [50, 100, 250];
+  }
+  return [25, 50, 100];
 }
 
 function seedState(): DemoState {
@@ -335,8 +377,12 @@ function seedState(): DemoState {
         id: "LNK_1",
         slug: "studio-noon",
         title: "Studio Noon universal checkout",
+        description: "Share a single public payment entry point for custom one-time payments.",
         mode: "donation",
         currency: "sBTC",
+        suggestedAmounts: [0.01, 0.025, 0.05],
+        allowCustomAmount: true,
+        isUniversal: true,
         isActive: true,
         createdAt: isoAt(base, -86400 * 10),
       },
@@ -344,6 +390,7 @@ function seedState(): DemoState {
         id: "LNK_2",
         slug: "studio-noon-april",
         title: "April retainership invoice",
+        description: "Fixed invoice checkout for April retainership.",
         mode: "invoice",
         currency: "sBTC",
         invoiceId: "INV_9821",
@@ -616,11 +663,17 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
 
       const paymentLink: DemoPaymentLink = {
         id: makeId("LNK"),
-        slug: `${stateRef.current.merchant.slug}-${invoice.id.toLowerCase()}`,
+        slug: createUniqueSlug(
+          stateRef.current,
+          `${stateRef.current.merchant.slug}-${invoice.id.toLowerCase()}`,
+          `${stateRef.current.merchant.slug}-checkout`
+        ),
         title: `${invoice.customer} checkout`,
+        description: invoice.description,
         mode: "invoice",
         currency: invoice.currency,
         invoiceId: invoice.id,
+        allowCustomAmount: false,
         isActive: true,
         createdAt: now,
       };
@@ -629,7 +682,9 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
         const next = {
           ...current,
           invoices: sortByDateDesc([{ ...invoice }, ...current.invoices]),
-          paymentLinks: sortByDateDesc([paymentLink, ...current.paymentLinks]),
+          paymentLinks: options?.draft
+            ? current.paymentLinks
+            : sortByDateDesc([paymentLink, ...current.paymentLinks]),
         };
         pushDelivery(next, "invoice.created", `Invoice ${invoice.id} created for ${invoice.customer}`, "pending");
         return next;
@@ -690,48 +745,75 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
       }));
     },
     createPaymentLink(input) {
+      const slug = createUniqueSlug(
+        stateRef.current,
+        input.slug,
+        `${stateRef.current.merchant.slug}-${input.mode}`
+      );
       const link: DemoPaymentLink = {
         id: makeId("LNK"),
-        slug: input.slug,
+        slug,
         title: input.title,
+        description: input.description,
         mode: input.mode,
         currency: input.currency,
         invoiceId: input.invoiceId,
         planId: input.planId,
+        suggestedAmounts:
+          input.mode === "donation"
+            ? (input.suggestedAmounts?.length
+                ? input.suggestedAmounts.map((amount) => currencyValue(amount))
+                : defaultSuggestedAmounts(input.currency))
+            : undefined,
+        allowCustomAmount: input.allowCustomAmount ?? input.mode === "donation",
+        isUniversal: input.isUniversal,
         isActive: true,
         createdAt: new Date().toISOString(),
       };
-      commit((current) => ({
-        ...current,
-        paymentLinks: sortByDateDesc([link, ...current.paymentLinks]),
-      }));
+      commit((current) => {
+        const paymentLinks =
+          link.isUniversal && link.mode === "donation"
+            ? current.paymentLinks.map((item) =>
+                item.mode === "donation" && item.isUniversal ? { ...item, isActive: false } : item
+              )
+            : current.paymentLinks;
+
+        return {
+          ...current,
+          paymentLinks: sortByDateDesc([link, ...paymentLinks]),
+        };
+      });
       return link;
     },
     regenerateUniversalLink() {
-      const slug = `${stateRef.current.merchant.slug}-${Math.random().toString(36).slice(2, 6)}`;
+      const slug = createUniqueSlug(
+        stateRef.current,
+        `${stateRef.current.merchant.slug}-${Math.random().toString(36).slice(2, 6)}`,
+        `${stateRef.current.merchant.slug}-pay`
+      );
       const link = {
         id: makeId("LNK"),
         slug,
-        title: `${stateRef.current.merchant.businessName} universal checkout`,
+        title: `${stateRef.current.merchant.businessName} checkout`,
+        description: "Universal public payment link for one-time customer payments.",
         mode: "donation" as const,
         currency: stateRef.current.merchant.defaultCurrency,
+        suggestedAmounts: defaultSuggestedAmounts(stateRef.current.merchant.defaultCurrency),
+        allowCustomAmount: true,
+        isUniversal: true,
         isActive: true,
         createdAt: new Date().toISOString(),
       };
-      commit((current) => ({
-        ...current,
-        paymentLinks: current.paymentLinks.map((item) =>
-          item.mode === "donation" ? { ...item, isActive: false } : item
-        ),
-        merchant: {
-          ...current.merchant,
-          slug,
-        },
-      }));
-      commit((current) => ({
-        ...current,
-        paymentLinks: sortByDateDesc([link, ...current.paymentLinks]),
-      }));
+      commit((current) => {
+        const paymentLinks = current.paymentLinks.map((item) =>
+          item.mode === "donation" && item.isUniversal ? { ...item, isActive: false } : item
+        );
+
+        return {
+          ...current,
+          paymentLinks: sortByDateDesc([link, ...paymentLinks]),
+        };
+      });
       return link;
     },
     createPlan(input) {
@@ -901,20 +983,22 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
         return null;
       }
 
-      const amount = currencyValue(input.amount ?? 0);
+      const amount = currencyValue(
+        input.amount && input.amount > 0 ? input.amount : link.suggestedAmounts?.[0] ?? 0
+      );
       if (amount <= 0) {
         return null;
       }
 
       return actions.createInvoice({
         type: "donation",
-        customer: input.customer,
+        customer: input.customer || "Public checkout customer",
         email: input.email,
         amount,
         currency: link.currency,
-        description: `${link.title} contribution`,
+        description: link.description || `${link.title} contribution`,
         expirationHours: 24,
-        recipientLabel: "Universal checkout",
+        recipientLabel: "Hosted payment link",
         metadata: `link=${link.slug}`,
       });
     },
@@ -927,9 +1011,9 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
       }
       return actions.addSubscriber({
         planId: link.planId,
-        customer: input.customer,
+        customer: input.customer || "New subscriber",
         email: input.email,
-        seats: 1,
+        seats: Math.max(1, input.seats ?? 1),
       });
     },
   };

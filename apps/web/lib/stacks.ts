@@ -9,3 +9,15 @@ export const stacksNetwork =
   process.env.NEXT_PUBLIC_STACKS_NETWORK === "mainnet"
     ? new StacksMainnet()
     : new StacksTestnet();
+
+export function getConnectedWalletAddress() {
+  if (!userSession.isUserSignedIn()) {
+    return null;
+  }
+
+  const data = userSession.loadUserData();
+  const networkKey =
+    process.env.NEXT_PUBLIC_STACKS_NETWORK === "mainnet" ? "mainnet" : "testnet";
+
+  return data.profile?.stxAddress?.[networkKey] ?? null;
+}

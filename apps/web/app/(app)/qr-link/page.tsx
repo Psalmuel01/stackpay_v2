@@ -8,12 +8,23 @@ import QrPreview from "@/components/app/QrPreview";
 import StatusBadge from "@/components/app/StatusBadge";
 import { useDemo } from "@/components/app/DemoProvider";
 
+function parseSuggestedAmounts(value: string) {
+  return value
+    .split(",")
+    .map((item) => Number(item.trim()))
+    .filter((item) => Number.isFinite(item) && item > 0);
+}
+
 export default function QrLinkPage() {
   const { state, actions } = useDemo();
   const universalLink =
-    state.paymentLinks.find((link) => link.mode === "donation" && link.isActive) ||
+    state.paymentLinks.find((link) => link.mode === "donation" && link.isUniversal && link.isActive) ||
     state.paymentLinks[0];
   const [copied, setCopied] = useState(false);
+  const [title, setTitle] = useState("Conference tip jar");
+  const [slug, setSlug] = useState("conference-tip-jar");
+  const [description, setDescription] = useState("Reusable public payment link for event attendees.");
+  const [suggestedAmounts, setSuggestedAmounts] = useState("0.01,0.025,0.05");
 
   async function handleCopy() {
     if (!universalLink) {
@@ -78,13 +89,61 @@ export default function QrLinkPage() {
                 "Checkout continues into the invoice payment surface",
               ].map((step, index) => (
                 <div key={step} className="rounded-2xl border border-white/10 bg-black/20 px-4 py-4">
-                  <div className="text-[11px] uppercase tracking-[0.22em] text-accent">
+                  <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">
                     0{index + 1}
                   </div>
                   <div className="mt-2 text-sm text-white/72">{step}</div>
                 </div>
               ))}
             </div>
+          </div>
+        </GlassCard>
+
+        <GlassCard>
+          <div className="text-[11px] uppercase tracking-[0.26em] text-white/40">
+            Create custom link
+          </div>
+          <div className="mt-4 space-y-3 rounded-[28px] border border-white/10 bg-white/5 p-5">
+            <input
+              className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white/75 outline-none"
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              placeholder="Link title"
+            />
+            <input
+              className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white/75 outline-none"
+              value={slug}
+              onChange={(event) => setSlug(event.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-"))}
+              placeholder="custom-slug"
+            />
+            <textarea
+              className="h-24 w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white/75 outline-none"
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              placeholder="Short description shown on the hosted page"
+            />
+            <input
+              className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white/75 outline-none"
+              value={suggestedAmounts}
+              onChange={(event) => setSuggestedAmounts(event.target.value)}
+              placeholder="0.01,0.025,0.05"
+            />
+            <button
+              onClick={() =>
+                actions.createPaymentLink({
+                  slug,
+                  title,
+                  description,
+                  mode: "donation",
+                  currency: state.merchant.defaultCurrency,
+                  suggestedAmounts: parseSuggestedAmounts(suggestedAmounts),
+                  allowCustomAmount: true,
+                })
+              }
+              className="w-full rounded-full border border-white/20 bg-white px-4 py-3 text-sm font-semibold text-black"
+            >
+              Create customizable link
+            </button>
           </div>
         </GlassCard>
 
@@ -122,9 +181,7 @@ export default function QrLinkPage() {
             {channels.map((channel, index) => (
               <div
                 key={channel.name}
-                className={`rounded-2xl border px-4 py-4 ${
-                  index === 0 ? "border-white/20 bg-accent/5" : "border-white/10 bg-white/5"
-                }`}
+                className={`rounded-2xl border px-4 py-4 ${index === 0 ? "border-white/20 bg-white/10" : "border-white/10 bg-white/5"}`}
               >
                 <div className="flex items-start justify-between gap-4">
                   <div>
@@ -152,7 +209,12 @@ export default function QrLinkPage() {
                 <div className="mt-2 font-mono text-xs text-white/65">
                   stackpay.app/pay/link/{link.slug}
                 </div>
-                <div className="mt-3 text-xs text-white/40">{link.mode}</div>
+                <div className="mt-3 flex items-center justify-between text-xs text-white/40">
+                  <span>{link.isUniversal ? "universal" : link.mode}</span>
+                  <Link href={`/pay/link/${link.slug}`} className="text-white/65">
+                    Open
+                  </Link>
+                </div>
               </div>
             ))}
           </div>

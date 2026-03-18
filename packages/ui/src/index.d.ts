@@ -6,3 +6,4 @@ export type NavigationItem = {
 export declare const appNavigation: NavigationItem[];
 export declare const mobileNavigation: NavigationItem[];
 export declare const sitePrimaryActions: NavigationItem[];
+export declare const settingsNavigation: NavigationItem[];

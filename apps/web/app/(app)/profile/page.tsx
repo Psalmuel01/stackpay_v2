@@ -14,6 +14,9 @@ const currencies: Currency[] = ["sBTC", "STX", "USDCx"];
 export default function ProfilePage() {
   const { state, actions } = useDemo();
   const [saved, setSaved] = useState(false);
+  const universalLink =
+    state.paymentLinks.find((link) => link.mode === "donation" && link.isUniversal && link.isActive) ??
+    state.paymentLinks.find((link) => link.mode === "donation" && link.isActive);
 
   function handleSave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -89,7 +92,7 @@ export default function ProfilePage() {
             <button className="rounded-full border border-white/20 bg-white px-5 py-2 text-sm font-semibold text-black">
               Save changes
             </button>
-            {saved ? <div className="text-xs text-accent">Profile updated in local demo state.</div> : null}
+            {saved ? <div className="text-xs text-white/60">Profile updated in local demo state.</div> : null}
           </form>
         </GlassCard>
 
@@ -102,8 +105,11 @@ export default function ProfilePage() {
             <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
               Xverse · Ready for wallet auth
             </div>
-            <div className="rounded-xl border border-white/20 bg-accent/5 px-4 py-3 text-white/80">
-              Public checkout slug: stackpay.app/pay/link/{state.merchant.slug}
+            <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white/80">
+              Merchant slug: stackpay.app/{state.merchant.slug}
+            </div>
+            <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white/80">
+              Public checkout: stackpay.app/pay/link/{universalLink?.slug ?? state.merchant.slug}
             </div>
           </div>
         </GlassCard>

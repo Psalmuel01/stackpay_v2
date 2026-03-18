@@ -56,7 +56,80 @@ export default function InvoicesPage() {
           />
         </div>
 
-        <div className="space-y-3">
+        <div className="hidden rounded-3xl border border-white/10 bg-white/5 lg:block">
+          <div className="grid grid-cols-[1.1fr_0.8fr_0.9fr_0.9fr] gap-4 border-b border-white/10 px-5 py-4 text-[11px] uppercase tracking-[0.24em] text-white/35">
+            <div>Invoice</div>
+            <div>Customer</div>
+            <div>Amount</div>
+            <div className="text-right">Actions</div>
+          </div>
+          <div className="divide-y divide-white/10">
+            {invoices.map((invoice) => (
+              <div
+                key={invoice.id}
+                className="grid grid-cols-[1.1fr_0.8fr_0.9fr_0.9fr] gap-4 px-5 py-4"
+              >
+                <div>
+                  <div className="text-sm font-semibold text-white">{invoice.id}</div>
+                  <div className="mt-1 text-xs text-white/40">
+                    {invoice.status === "paid"
+                      ? `Paid ${formatDateTime(invoice.paidAt)}`
+                      : invoice.expiresAt
+                        ? `Expires ${formatDateTime(invoice.expiresAt)}`
+                        : "No expiry"}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-sm text-white/78">{invoice.customer}</div>
+                  <div className="mt-1 text-xs text-white/35">{invoice.email}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-white/80">
+                    {formatCurrencyAmount(invoice.amount, invoice.currency)}
+                  </div>
+                  <div className="mt-1 truncate text-xs text-white/35">{invoice.description}</div>
+                </div>
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <StatusBadge
+                    label={
+                      invoice.status === "paid"
+                        ? "Paid"
+                        : invoice.status === "pending"
+                          ? "Pending"
+                          : invoice.status === "draft"
+                            ? "Draft"
+                            : "Expired"
+                    }
+                  />
+                  {invoice.status === "pending" ? (
+                    <button
+                      onClick={() => actions.markInvoicePaid(invoice.id, invoice.customer)}
+                      className="rounded-full border border-white/25 bg-white px-3 py-1 text-xs font-semibold text-black"
+                    >
+                      Mark paid
+                    </button>
+                  ) : null}
+                  {invoice.status === "pending" ? (
+                    <button
+                      onClick={() => actions.expireInvoice(invoice.id)}
+                      className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs text-white/70"
+                    >
+                      Expire
+                    </button>
+                  ) : null}
+                  <Link
+                    href={`/pay/${invoice.id}`}
+                    className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs text-white/70"
+                  >
+                    View
+                  </Link>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-3 lg:hidden">
           {invoices.map((invoice) => (
             <div
               key={invoice.id}

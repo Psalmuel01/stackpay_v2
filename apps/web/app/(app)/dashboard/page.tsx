@@ -19,34 +19,41 @@ export default function DashboardPage() {
   const paidInvoices = state.invoices.filter((invoice) => invoice.status === "paid");
   const pendingInvoices = state.invoices.filter((invoice) => invoice.status === "pending");
   const expiredInvoices = state.invoices.filter((invoice) => invoice.status === "expired");
-  const totalVolume = paidInvoices.reduce((sum, invoice) => sum + invoice.amount, 0);
   const activePolicies = state.settlementPolicies.filter((policy) => policy.active);
   const upcomingSettlement = activePolicies.find((policy) => policy.nextSettlementAt);
+  const volumeByCurrency = {
+    sBTC: paidInvoices
+      .filter((invoice) => invoice.currency === "sBTC")
+      .reduce((sum, invoice) => sum + invoice.amount, 0),
+    STX: paidInvoices
+      .filter((invoice) => invoice.currency === "STX")
+      .reduce((sum, invoice) => sum + invoice.amount, 0),
+    USDCx: paidInvoices
+      .filter((invoice) => invoice.currency === "USDCx")
+      .reduce((sum, invoice) => sum + invoice.amount, 0),
+  };
 
   const balanceCards = (Object.entries(state.balances) as Array<
     [keyof typeof state.balances, number]
   >).map(([token, amount]) => ({
     token,
     available: amount,
-    locked:
-      token === "sBTC"
-        ? pendingInvoices
-            .filter((invoice) => invoice.currency === token)
-            .reduce((sum, invoice) => sum + invoice.amount, 0)
-        : token === "USDCx"
-          ? 1250
-          : 320,
+    locked: pendingInvoices
+      .filter((invoice) => invoice.currency === token)
+      .reduce((sum, invoice) => sum + invoice.amount, 0),
   }));
 
-  const trendPoints = paidInvoices
-    .slice(0, 6)
-    .reverse()
-    .map((invoice, index) => ({
-      label: new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(
-        new Date(invoice.paidAt || invoice.createdAt)
-      ),
-      value: Number(invoice.amount) + index * 2,
-    }));
+  const paymentsByDay = paidInvoices.reduce<Record<string, number>>((acc, invoice) => {
+    const label = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(
+      new Date(invoice.paidAt || invoice.createdAt)
+    );
+    acc[label] = (acc[label] ?? 0) + 1;
+    return acc;
+  }, {});
+
+  const trendPoints = Object.entries(paymentsByDay)
+    .slice(-6)
+    .map(([label, value]) => ({ label, value }));
 
   const needsAttention = pendingInvoices.slice(0, 3).map((invoice) => ({
     invoice: invoice.id,
@@ -109,30 +116,41 @@ export default function DashboardPage() {
       </div>
 
       <div className="mt-6 grid gap-6 md:grid-cols-2 xl:grid-cols-4">
-        <GlassCard className="border border-white/30">
-          <div className="text-[11px] uppercase tracking-[0.26em] text-white/40">Total Volume</div>
-          <div className="mt-3 text-3xl font-semibold text-white">{totalVolume.toLocaleString()}</div>
-          <div className="mt-2 text-sm text-white/55">Paid invoices across the demo merchant</div>
+        <GlassCard>
+          <div className="text-[11px] uppercase tracking-[0.26em] text-white/40">Collected volume</div>
+          <div className="mt-4 space-y-2 text-sm text-white/75">
+            <div className="flex items-center justify-between">
+              <span>sBTC</span>
+              <span>{formatCurrencyAmount(volumeByCurrency.sBTC, "sBTC")}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span>STX</span>
+              <span>{formatCurrencyAmount(volumeByCurrency.STX, "STX")}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span>USDCx</span>
+              <span>{formatCurrencyAmount(volumeByCurrency.USDCx, "USDCx")}</span>
+            </div>
+          </div>
+          <div className="mt-3 text-xs text-white/40">
+            Volume is shown per asset so the numbers reconcile.
+          </div>
         </GlassCard>
         <GlassCard>
-          <div className="text-[11px] uppercase tracking-[0.26em] text-white/40">Active Invoices</div>
+          <div className="text-[11px] uppercase tracking-[0.26em] text-white/40">Paid invoices</div>
+          <div className="mt-3 text-3xl font-semibold text-white">{paidInvoices.length}</div>
+          <div className="mt-2 text-sm text-white/55">Receipts generated in this workspace</div>
+        </GlassCard>
+        <GlassCard>
+          <div className="text-[11px] uppercase tracking-[0.26em] text-white/40">Open invoices</div>
           <div className="mt-3 text-3xl font-semibold text-white">{pendingInvoices.length}</div>
           <div className="mt-2 text-sm text-white/55">Hosted payment links ready to share</div>
         </GlassCard>
         <GlassCard>
           <div className="text-[11px] uppercase tracking-[0.26em] text-white/40">Subscriptions</div>
           <div className="mt-3 text-3xl font-semibold text-white">{state.subscriptions.length}</div>
-          <div className="mt-2 text-sm text-white/55">Recurring customers under management</div>
-        </GlassCard>
-        <GlassCard>
-          <div className="text-[11px] uppercase tracking-[0.26em] text-white/40">Next Settlement</div>
-          <div className="mt-3 text-xl font-semibold text-white">
-            {upcomingSettlement?.nextSettlementAt
-              ? formatDateTime(upcomingSettlement.nextSettlementAt)
-              : "Manual only"}
-          </div>
           <div className="mt-2 text-sm text-white/55">
-            {upcomingSettlement ? upcomingSettlement.name : "Create a policy to automate payouts"}
+            {activePolicies.length} active payout policies configured
           </div>
         </GlassCard>
       </div>
@@ -145,7 +163,7 @@ export default function DashboardPage() {
                 Payment volume
               </div>
               <div className="mt-2 text-xl font-semibold text-white">
-                Recent paid invoice activity
+                Paid invoices by day
               </div>
             </div>
             <StatusBadge label="Active" />
@@ -155,12 +173,12 @@ export default function DashboardPage() {
               trendPoints.length > 1
                 ? trendPoints
                 : [
-                    { label: "Seed", value: 5 },
-                    { label: "Demo", value: 8 },
-                    { label: "Flow", value: 11 },
-                    { label: "Ready", value: 13 },
-                    { label: "For", value: 16 },
-                    { label: "Integrations", value: 20 },
+                    { label: "Mon", value: 1 },
+                    { label: "Tue", value: 2 },
+                    { label: "Wed", value: 1 },
+                    { label: "Thu", value: 3 },
+                    { label: "Fri", value: 2 },
+                    { label: "Sat", value: 1 },
                   ]
             }
             accent
@@ -200,7 +218,7 @@ export default function DashboardPage() {
                 key={`${item.title}-${index}`}
                 className={`rounded-2xl border px-4 py-4 ${
                   index === 1
-                    ? "border-white/20 bg-accent/5"
+                    ? "border-white/20 bg-white/10"
                     : "border-white/10 bg-white/5"
                 }`}
               >
@@ -254,7 +272,7 @@ export default function DashboardPage() {
               href="/settlements"
               className="rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm text-white/70"
             >
-              Run settlements
+              {upcomingSettlement ? "View settlements" : "Create settlements"}
             </Link>
           </div>
         </GlassCard>

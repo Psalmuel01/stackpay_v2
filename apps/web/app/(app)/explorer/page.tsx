@@ -59,7 +59,7 @@ export default function ExplorerPage() {
             </button>
             <button
               onClick={() => setQuery(state.receipts[0]?.id ?? "")}
-              className="rounded-full border border-white/30 bg-accent/5 px-3 py-2 text-accent"
+              className="rounded-full border border-white/20 bg-white/10 px-3 py-2 text-white/70"
             >
               Receipt verification
             </button>
@@ -84,7 +84,7 @@ export default function ExplorerPage() {
             ].map(([label, value], index) => (
               <div
                 key={label}
-                className={`rounded-2xl border px-4 py-4 ${index === 1 ? "border-white/20 bg-accent/5" : "border-white/10 bg-white/5"
+                className={`rounded-2xl border px-4 py-4 ${index === 1 ? "border-white/20 bg-white/10" : "border-white/10 bg-white/5"
                   }`}
               >
                 <div className="text-[11px] uppercase tracking-[0.24em] text-white/40">
