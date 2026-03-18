@@ -15,13 +15,13 @@ const currencies: Currency[] = ["sBTC", "STX", "USDCx"];
 
 export default function SettlementsPage() {
   const { state, actions } = useDemo();
-  const [name, setName] = useState("Operations wallet");
-  const [destination, setDestination] = useState(state.merchant.settlementWallet);
+  const [name, setName] = useState("");
+  const [destination, setDestination] = useState("");
   const [currency, setCurrency] = useState<Currency>("sBTC");
   const [trigger, setTrigger] = useState<"threshold" | "scheduled">("threshold");
-  const [threshold, setThreshold] = useState("2");
-  const [cadence, setCadence] = useState("168");
-  const [minPayout, setMinPayout] = useState("0.2");
+  const [threshold, setThreshold] = useState("");
+  const [cadence, setCadence] = useState("");
+  const [minPayout, setMinPayout] = useState("");
 
   return (
     <div>

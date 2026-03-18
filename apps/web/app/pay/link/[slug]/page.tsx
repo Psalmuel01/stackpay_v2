@@ -4,11 +4,15 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import GlassCard from "@/components/GlassCard";
-import QrPreview from "@/components/app/QrPreview";
 import {
   formatCurrencyAmount,
   useDemo,
 } from "@/components/app/DemoProvider";
+
+function normalizeAmount(value: number, step: number, delta: number) {
+  const next = value + step * delta;
+  return Math.max(step > 0 ? step : 0, Math.round(next * 1000) / 1000);
+}
 
 export default function PublicPaymentLinkPage({
   params,
@@ -19,20 +23,21 @@ export default function PublicPaymentLinkPage({
   const { state, actions } = useDemo();
   const link = state.paymentLinks.find((item) => item.slug === params.slug && item.isActive);
   const linkedPlan = state.plans.find((item) => item.id === link?.planId);
-  const [email, setEmail] = useState("customer@example.com");
-  const [customer, setCustomer] = useState("Acme Inc");
-  const [seats, setSeats] = useState("1");
-  const suggestedAmounts = link?.suggestedAmounts ?? [];
-  const [amount, setAmount] = useState(() => String(suggestedAmounts[0] ?? ""));
+  const [email, setEmail] = useState("");
+  const [customer, setCustomer] = useState("");
+  const [seats, setSeats] = useState("");
+  const [amount, setAmount] = useState(() => String(link?.defaultAmount ?? ""));
+  const amountStep = link?.amountStep ?? 1;
+
   const pageSummary = useMemo(() => {
     if (!link) {
       return "";
     }
     if (link.mode === "invoice") {
-      return "Open the fixed invoice and continue straight into the hosted payment screen.";
+      return "Open the fixed invoice and continue directly into hosted checkout.";
     }
     if (link.mode === "subscription") {
-      return "Capture minimal customer info, then create the subscriber record and hand off recurring billing to the merchant workspace.";
+      return "Capture a company name and billing email, then create the subscriber record for the selected plan.";
     }
     return link.description || "Choose an amount, generate a one-time invoice, and continue into hosted checkout.";
   }, [link]);
@@ -52,11 +57,18 @@ export default function PublicPaymentLinkPage({
     );
   }
 
+  function adjustAmount(delta: number) {
+    if (!link) {
+      return;
+    }
+    const base = Number(amount || link.defaultAmount || 0);
+    setAmount(String(normalizeAmount(base, amountStep, delta)));
+  }
+
   function handleContinue() {
     if (!link) {
       return;
     }
-
     if (link.mode === "invoice" && link.invoiceId) {
       router.push(`/pay/${link.invoiceId}`);
       return;
@@ -77,7 +89,7 @@ export default function PublicPaymentLinkPage({
 
     const invoice = actions.createInvoiceFromLink({
       slug: link.slug,
-      customer: link.mode === "donation" ? "Public checkout supporter" : customer,
+      customer: "Public checkout supporter",
       email,
       amount: Number(amount || 0),
     });
@@ -91,137 +103,124 @@ export default function PublicPaymentLinkPage({
       <div className="mx-auto grid w-full max-w-5xl gap-8 lg:grid-cols-[1.05fr_0.95fr]">
         <div className="space-y-6">
           <div>
-            <div className="text-xs uppercase tracking-[0.35em] text-white/40">Public payment link</div>
+            <div className="text-xs uppercase tracking-[0.35em] text-white/40">Hosted payment link</div>
             <h1 className="mt-3 text-4xl font-semibold text-white">{link.title}</h1>
-            <p className="mt-3 max-w-2xl text-sm text-white/60">
-              {pageSummary}
-            </p>
+            <p className="mt-3 max-w-2xl text-sm text-white/60">{pageSummary}</p>
           </div>
 
           <GlassCard className="border border-white/20">
-            <QrPreview label={`stackpay.app/pay/link/${link.slug}`} />
-          </GlassCard>
-        </div>
-
-        <div className="space-y-6">
-          <GlassCard>
-            <div className="text-[11px] uppercase tracking-[0.26em] text-white/40">Details</div>
-            <div className="mt-4 grid gap-3">
+            <div className="grid gap-3">
               <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-sm text-white/75">
                 Merchant: {state.merchant.businessName}
               </div>
               <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-sm text-white/75">
-                Mode: {link.mode}
+                Asset: {link.currency}
               </div>
-              <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-sm text-white/75">
-                Currency: {link.currency}
-              </div>
-              {link.description ? (
-                <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-sm text-white/75">
-                  {link.description}
-                </div>
-              ) : null}
               {linkedPlan ? (
                 <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-sm text-white/75">
                   Plan: {linkedPlan.name} · {formatCurrencyAmount(linkedPlan.amount, linkedPlan.currency)}
                 </div>
               ) : null}
-              {link.mode === "donation" && suggestedAmounts.length ? (
+              {link.description ? (
                 <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-sm text-white/75">
-                  Suggested amounts:{" "}
-                  {suggestedAmounts
-                    .map((item) => formatCurrencyAmount(item, link.currency))
-                    .join(" · ")}
+                  {link.description}
                 </div>
               ) : null}
             </div>
           </GlassCard>
+        </div>
 
-          <GlassCard>
-            <div className="text-[11px] uppercase tracking-[0.26em] text-white/40">Continue</div>
-            <div className="mt-4 space-y-3">
-              {link.mode === "donation" ? (
-                <>
-                  {suggestedAmounts.length ? (
-                    <div className="grid grid-cols-3 gap-2">
-                      {suggestedAmounts.map((item) => {
-                        const selected = Number(amount) === item;
-                        return (
-                          <button
-                            key={item}
-                            onClick={() => setAmount(String(item))}
-                            className={`rounded-full px-4 py-3 text-sm transition ${
-                              selected
-                                ? "border border-white/20 bg-white text-black"
-                                : "border border-white/10 bg-white/5 text-white/70"
-                            }`}
-                          >
-                            {formatCurrencyAmount(item, link.currency)}
-                          </button>
-                        );
-                      })}
+        <GlassCard className="border border-white/20">
+          <div className="text-[11px] uppercase tracking-[0.26em] text-white/40">Checkout</div>
+          <div className="mt-2 text-2xl font-semibold text-white">
+            {link.mode === "subscription" ? "Start subscription" : "Complete payment"}
+          </div>
+
+          <div className="mt-6 space-y-3">
+            {link.mode === "donation" ? (
+              <>
+                <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
+                  <div className="text-[11px] uppercase tracking-[0.22em] text-white/40">Amount</div>
+                  <div className="mt-4 flex items-center gap-3">
+                    <button
+                      onClick={() => adjustAmount(-1)}
+                      className="h-12 w-12 rounded-full border border-white/10 bg-black/20 text-xl text-white/75"
+                    >
+                      -
+                    </button>
+                    <div className="flex-1 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-center text-lg font-semibold text-white">
+                      {amount ? formatCurrencyAmount(Number(amount), link.currency) : `0 ${link.currency}`}
                     </div>
-                  ) : null}
+                    <button
+                      onClick={() => adjustAmount(1)}
+                      className="h-12 w-12 rounded-full border border-white/10 bg-black/20 text-xl text-white/75"
+                    >
+                      +
+                    </button>
+                  </div>
                   {link.allowCustomAmount ? (
                     <input
-                      className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/75 outline-none"
+                      className="mt-3 w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white/75 outline-none"
                       value={amount}
                       onChange={(event) => setAmount(event.target.value)}
-                      placeholder="Custom amount"
+                      placeholder="Enter custom amount"
                     />
                   ) : null}
-                </>
-              ) : null}
-              {link.mode === "subscription" ? (
-                <>
-                  <input
-                    className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/75 outline-none"
-                    value={customer}
-                    onChange={(event) => setCustomer(event.target.value)}
-                    placeholder="Company or team name"
-                  />
-                  <div className="grid gap-3 md:grid-cols-[1fr_140px]">
-                    <input
-                      className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/75 outline-none"
-                      value={email}
-                      onChange={(event) => setEmail(event.target.value)}
-                      placeholder="Billing email"
-                    />
-                    <input
-                      className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/75 outline-none"
-                      value={seats}
-                      onChange={(event) => setSeats(event.target.value)}
-                      placeholder="Seats"
-                    />
-                  </div>
-                </>
-              ) : link.mode === "donation" ? (
+                </div>
+
                 <input
                   className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/75 outline-none"
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
                   placeholder="Receipt email (optional)"
                 />
-              ) : null}
-              <button
-                onClick={handleContinue}
-                className="w-full rounded-full border border-white/20 bg-white px-5 py-3 text-sm font-semibold text-black"
-              >
-                {link.mode === "subscription"
-                  ? "Start subscription"
-                  : link.mode === "donation"
-                    ? "Generate invoice"
-                    : "Open invoice"}
-              </button>
-              <Link
-                href="/invoices"
-                className="flex w-full items-center justify-center rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm text-white/70"
-              >
-                View merchant records
-              </Link>
-            </div>
-          </GlassCard>
-        </div>
+              </>
+            ) : null}
+
+            {link.mode === "subscription" ? (
+              <>
+                <input
+                  className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/75 outline-none"
+                  value={customer}
+                  onChange={(event) => setCustomer(event.target.value)}
+                  placeholder="Company or team name"
+                />
+                <div className="grid gap-3 md:grid-cols-[1fr_140px]">
+                  <input
+                    className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/75 outline-none"
+                    value={email}
+                    onChange={(event) => setEmail(event.target.value)}
+                    placeholder="Billing email"
+                  />
+                  <input
+                    className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/75 outline-none"
+                    value={seats}
+                    onChange={(event) => setSeats(event.target.value)}
+                    placeholder="1"
+                  />
+                </div>
+              </>
+            ) : null}
+
+            <button
+              onClick={handleContinue}
+              className="w-full rounded-full border border-white/20 bg-white px-5 py-3 text-sm font-semibold text-black"
+            >
+              {link.mode === "subscription"
+                ? "Start subscription"
+                : link.mode === "donation"
+                  ? "Generate invoice"
+                  : "Open invoice"}
+            </button>
+
+            <Link
+              href="/invoices"
+              className="flex w-full items-center justify-center rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm text-white/70"
+            >
+              View merchant records
+            </Link>
+          </div>
+        </GlassCard>
       </div>
     </main>
   );

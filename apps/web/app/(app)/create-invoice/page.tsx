@@ -26,7 +26,7 @@ const types: Array<{ id: InvoiceType; label: string; summary: string }> = [
   {
     id: "donation",
     label: "Donation",
-    summary: "Create a reusable public payment link with suggested amounts and custom slug.",
+    summary: "Create a reusable public payment link with a default amount and adjustable checkout controls.",
   },
 ];
 
@@ -52,31 +52,24 @@ function slugify(value: string) {
     .replace(/^-+|-+$/g, "");
 }
 
-function parseSuggestedAmounts(value: string) {
-  return value
-    .split(",")
-    .map((item) => Number(item.trim()))
-    .filter((item) => Number.isFinite(item) && item > 0);
-}
-
 export default function CreateInvoicePage() {
   const { state, actions } = useDemo();
   const [type, setType] = useState<InvoiceType>("standard");
-  const [amount, setAmount] = useState("0.018");
+  const [amount, setAmount] = useState("");
   const [currency, setCurrency] = useState<Currency>("sBTC");
   const [expiration, setExpiration] = useState<number | null>(24);
-  const [customer, setCustomer] = useState("Studio Noon");
-  const [email, setEmail] = useState("billing@studionoon.dev");
-  const [description, setDescription] = useState("April subscription for StackPay Pro");
-  const [metadata, setMetadata] = useState("campaign=spring");
+  const [customer, setCustomer] = useState("");
+  const [email, setEmail] = useState("");
+  const [description, setDescription] = useState("");
+  const [metadata, setMetadata] = useState("");
 
-  const [planName, setPlanName] = useState("StackPay Pro");
+  const [planName, setPlanName] = useState("");
   const [interval, setInterval] = useState(intervals[1]);
   const [seedSubscriber, setSeedSubscriber] = useState(true);
 
-  const [donationTitle, setDonationTitle] = useState("Support Studio Noon");
-  const [donationSlug, setDonationSlug] = useState("studio-noon-support");
-  const [suggestedAmounts, setSuggestedAmounts] = useState("0.01,0.025,0.05");
+  const [donationTitle, setDonationTitle] = useState("");
+  const [donationSlug, setDonationSlug] = useState("");
+  const [amountStep, setAmountStep] = useState("");
 
   const [result, setResult] = useState<{
     title: string;
@@ -173,13 +166,17 @@ export default function CreateInvoicePage() {
       description,
       mode: "donation",
       currency,
-      suggestedAmounts: parseSuggestedAmounts(suggestedAmounts),
+      defaultAmount: Number(amount || 0),
+      amountStep: Number(amountStep || 0),
       allowCustomAmount: true,
     });
     setResult({
       title: link.id,
       href: `/pay/link/${link.slug}`,
-      summary: `Reusable donation link created with suggested amounts ${suggestedAmounts}.`,
+      summary: `Reusable payment link created with a default amount of ${formatCurrencyAmount(
+        Number(amount || 0),
+        currency
+      )}.`,
     });
   }
 
@@ -219,16 +216,16 @@ export default function CreateInvoicePage() {
             <div className="grid gap-4 md:grid-cols-2">
               <div>
                 <label className="text-xs uppercase tracking-[0.24em] text-white/40">
-                  {type === "donation" ? "Suggested amount" : "Amount"}
+                  {type === "donation" ? "Default amount" : "Amount"}
                 </label>
                 <div className="mt-2 flex items-center rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
                   <input
                     className="w-full bg-transparent text-sm text-white/80 outline-none"
                     value={amount}
                     onChange={(event) => setAmount(event.target.value)}
-                    placeholder="0.00"
+                    placeholder={type === "donation" ? "Default checkout amount" : "Invoice amount"}
                   />
-                  <span className="text-xs text-accent">{currency}</span>
+                  <span className="text-xs text-white/55">{currency}</span>
                 </div>
               </div>
               <div>
@@ -260,6 +257,7 @@ export default function CreateInvoicePage() {
                       className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/80 outline-none"
                       value={customer}
                       onChange={(event) => setCustomer(event.target.value)}
+                      placeholder="Customer or company"
                     />
                   </div>
                   <div>
@@ -268,6 +266,7 @@ export default function CreateInvoicePage() {
                       className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/80 outline-none"
                       value={email}
                       onChange={(event) => setEmail(event.target.value)}
+                      placeholder="billing@example.com"
                     />
                   </div>
                 </div>
@@ -297,6 +296,7 @@ export default function CreateInvoicePage() {
                     className="mt-2 h-24 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/80 outline-none"
                     value={description}
                     onChange={(event) => setDescription(event.target.value)}
+                    placeholder="What the customer is paying for"
                   />
                 </div>
               </>
@@ -311,6 +311,7 @@ export default function CreateInvoicePage() {
                       className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/80 outline-none"
                       value={planName}
                       onChange={(event) => setPlanName(event.target.value)}
+                      placeholder="Pro Annual"
                     />
                   </div>
                   <div>
@@ -340,6 +341,7 @@ export default function CreateInvoicePage() {
                       className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/80 outline-none"
                       value={customer}
                       onChange={(event) => setCustomer(event.target.value)}
+                      placeholder="Optional first subscriber"
                     />
                   </div>
                   <div>
@@ -348,6 +350,7 @@ export default function CreateInvoicePage() {
                       className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/80 outline-none"
                       value={email}
                       onChange={(event) => setEmail(event.target.value)}
+                      placeholder="billing@example.com"
                     />
                   </div>
                 </div>
@@ -369,6 +372,7 @@ export default function CreateInvoicePage() {
                     className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/80 outline-none"
                     value={metadata}
                     onChange={(event) => setMetadata(event.target.value)}
+                    placeholder="tier=pro"
                   />
                 </div>
               </>
@@ -383,6 +387,7 @@ export default function CreateInvoicePage() {
                       className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/80 outline-none"
                       value={donationTitle}
                       onChange={(event) => setDonationTitle(event.target.value)}
+                      placeholder="Support Studio Noon"
                     />
                   </div>
                   <div>
@@ -391,17 +396,30 @@ export default function CreateInvoicePage() {
                       className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/80 outline-none"
                       value={donationSlug}
                       onChange={(event) => setDonationSlug(slugify(event.target.value))}
+                      placeholder="support-studio-noon"
                     />
                   </div>
                 </div>
 
-                <div>
-                  <label className="text-xs uppercase tracking-[0.24em] text-white/40">Suggested amounts</label>
-                  <input
-                    className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/80 outline-none"
-                    value={suggestedAmounts}
-                    onChange={(event) => setSuggestedAmounts(event.target.value)}
-                  />
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <label className="text-xs uppercase tracking-[0.24em] text-white/40">Amount step</label>
+                    <input
+                      className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/80 outline-none"
+                      value={amountStep}
+                      onChange={(event) => setAmountStep(event.target.value)}
+                      placeholder="How much +/- changes the amount"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs uppercase tracking-[0.24em] text-white/40">Metadata</label>
+                    <input
+                      className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/80 outline-none"
+                      value={metadata}
+                      onChange={(event) => setMetadata(event.target.value)}
+                      placeholder="channel=events"
+                    />
+                  </div>
                 </div>
 
                 <div>
@@ -410,6 +428,7 @@ export default function CreateInvoicePage() {
                     className="mt-2 h-24 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/80 outline-none"
                     value={description}
                     onChange={(event) => setDescription(event.target.value)}
+                    placeholder="Support the project with a quick on-chain payment."
                   />
                 </div>
               </>
@@ -498,16 +517,16 @@ export default function CreateInvoicePage() {
             <div className="mt-4 rounded-[28px] border border-white/10 bg-white/5 p-5">
               <div className="text-lg font-semibold text-white">
                 {type === "subscription"
-                  ? planName
+                  ? planName || "Subscription plan"
                   : type === "donation"
-                    ? donationTitle
-                    : customer || state.merchant.businessName}
+                    ? donationTitle || "Payment link"
+                    : customer || "New invoice"}
               </div>
               <div className="mt-1 text-sm text-white/55">
                 {type === "subscription"
                   ? `${interval.label} · ${formatCurrencyAmount(Number(amount || 0), currency)}`
                   : type === "donation"
-                    ? `Reusable link · ${parseSuggestedAmounts(suggestedAmounts).length || 1} suggested amount options`
+                    ? `Reusable link · starts at ${formatCurrencyAmount(Number(amount || 0), currency)}`
                     : `${type} invoice · ${formatCurrencyAmount(Number(amount || 0), currency)}`}
               </div>
               <div className="mt-6">

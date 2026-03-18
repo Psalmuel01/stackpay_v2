@@ -8,10 +8,23 @@ import StatusBadge from "@/components/app/StatusBadge";
 import TrendChart from "@/components/app/TrendChart";
 import {
   formatCurrencyAmount,
-  formatDateTime,
   formatRelativeTime,
   useDemo,
 } from "@/components/app/DemoProvider";
+
+const usdRates = {
+  sBTC: 68000,
+  STX: 2.4,
+  USDCx: 1,
+} as const;
+
+function formatUsd(amount: number) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(amount);
+}
 
 export default function DashboardPage() {
   const { state } = useDemo();
@@ -21,26 +34,15 @@ export default function DashboardPage() {
   const expiredInvoices = state.invoices.filter((invoice) => invoice.status === "expired");
   const activePolicies = state.settlementPolicies.filter((policy) => policy.active);
   const upcomingSettlement = activePolicies.find((policy) => policy.nextSettlementAt);
-  const volumeByCurrency = {
-    sBTC: paidInvoices
-      .filter((invoice) => invoice.currency === "sBTC")
-      .reduce((sum, invoice) => sum + invoice.amount, 0),
-    STX: paidInvoices
-      .filter((invoice) => invoice.currency === "STX")
-      .reduce((sum, invoice) => sum + invoice.amount, 0),
-    USDCx: paidInvoices
-      .filter((invoice) => invoice.currency === "USDCx")
-      .reduce((sum, invoice) => sum + invoice.amount, 0),
-  };
+  const totalVolumeUsd = paidInvoices.reduce((sum, invoice) => {
+    return sum + invoice.amount * usdRates[invoice.currency];
+  }, 0);
 
   const balanceCards = (Object.entries(state.balances) as Array<
     [keyof typeof state.balances, number]
   >).map(([token, amount]) => ({
     token,
     available: amount,
-    locked: pendingInvoices
-      .filter((invoice) => invoice.currency === token)
-      .reduce((sum, invoice) => sum + invoice.amount, 0),
   }));
 
   const paymentsByDay = paidInvoices.reduce<Record<string, number>>((acc, invoice) => {
@@ -107,9 +109,8 @@ export default function DashboardPage() {
                 Available
               </span>
             </div>
-            <div className="mt-6 flex items-center justify-between text-sm text-white/55">
-              <span>Locked</span>
-              <span>{balance.locked.toLocaleString()}</span>
+            <div className="mt-6 text-sm text-white/55">
+              Wallet balance visible in the current demo workspace.
             </div>
           </GlassCard>
         ))}
@@ -117,23 +118,10 @@ export default function DashboardPage() {
 
       <div className="mt-6 grid gap-6 md:grid-cols-2 xl:grid-cols-4">
         <GlassCard>
-          <div className="text-[11px] uppercase tracking-[0.26em] text-white/40">Collected volume</div>
-          <div className="mt-4 space-y-2 text-sm text-white/75">
-            <div className="flex items-center justify-between">
-              <span>sBTC</span>
-              <span>{formatCurrencyAmount(volumeByCurrency.sBTC, "sBTC")}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span>STX</span>
-              <span>{formatCurrencyAmount(volumeByCurrency.STX, "STX")}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span>USDCx</span>
-              <span>{formatCurrencyAmount(volumeByCurrency.USDCx, "USDCx")}</span>
-            </div>
-          </div>
+          <div className="text-[11px] uppercase tracking-[0.26em] text-white/40">Total volume</div>
+          <div className="mt-3 text-3xl font-semibold text-white">{formatUsd(totalVolumeUsd)}</div>
           <div className="mt-3 text-xs text-white/40">
-            Volume is shown per asset so the numbers reconcile.
+            Demo USD equivalent across paid invoices.
           </div>
         </GlassCard>
         <GlassCard>

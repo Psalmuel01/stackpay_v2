@@ -57,17 +57,17 @@ export default function InvoicesPage() {
         </div>
 
         <div className="hidden rounded-3xl border border-white/10 bg-white/5 lg:block">
-          <div className="grid grid-cols-[1.1fr_0.8fr_0.9fr_0.9fr] gap-4 border-b border-white/10 px-5 py-4 text-[11px] uppercase tracking-[0.24em] text-white/35">
+          <div className="grid grid-cols-[1.1fr_1fr_0.95fr_0.8fr] gap-6 border-b border-white/10 px-6 py-4 text-[11px] uppercase tracking-[0.24em] text-white/35">
             <div>Invoice</div>
             <div>Customer</div>
             <div>Amount</div>
-            <div className="text-right">Actions</div>
+            <div>Status</div>
           </div>
           <div className="divide-y divide-white/10">
             {invoices.map((invoice) => (
               <div
                 key={invoice.id}
-                className="grid grid-cols-[1.1fr_0.8fr_0.9fr_0.9fr] gap-4 px-5 py-4"
+                className="grid grid-cols-[1.1fr_1fr_0.95fr_0.8fr] gap-6 px-6 py-5"
               >
                 <div>
                   <div className="text-sm font-semibold text-white">{invoice.id}</div>
@@ -84,12 +84,12 @@ export default function InvoicesPage() {
                   <div className="mt-1 text-xs text-white/35">{invoice.email}</div>
                 </div>
                 <div>
-                  <div className="text-sm text-white/80">
+                  <div className="text-base font-medium text-white">
                     {formatCurrencyAmount(invoice.amount, invoice.currency)}
                   </div>
-                  <div className="mt-1 truncate text-xs text-white/35">{invoice.description}</div>
+                  <div className="mt-1 text-sm text-white/45">{invoice.description}</div>
                 </div>
-                <div className="flex flex-wrap items-center justify-end gap-2">
+                <div className="space-y-3">
                   <StatusBadge
                     label={
                       invoice.status === "paid"
@@ -101,28 +101,30 @@ export default function InvoicesPage() {
                             : "Expired"
                     }
                   />
-                  {invoice.status === "pending" ? (
-                    <button
-                      onClick={() => actions.markInvoicePaid(invoice.id, invoice.customer)}
-                      className="rounded-full border border-white/25 bg-white px-3 py-1 text-xs font-semibold text-black"
-                    >
-                      Mark paid
-                    </button>
-                  ) : null}
-                  {invoice.status === "pending" ? (
-                    <button
-                      onClick={() => actions.expireInvoice(invoice.id)}
+                  <div className="flex flex-wrap gap-2">
+                    {invoice.status === "pending" ? (
+                      <button
+                        onClick={() => actions.markInvoicePaid(invoice.id, invoice.customer)}
+                        className="rounded-full border border-white/25 bg-white px-3 py-1 text-xs font-semibold text-black"
+                      >
+                        Mark paid
+                      </button>
+                    ) : null}
+                    {invoice.status === "pending" ? (
+                      <button
+                        onClick={() => actions.expireInvoice(invoice.id)}
+                        className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs text-white/70"
+                      >
+                        Expire
+                      </button>
+                    ) : null}
+                    <Link
+                      href={`/pay/${invoice.id}`}
                       className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs text-white/70"
                     >
-                      Expire
-                    </button>
-                  ) : null}
-                  <Link
-                    href={`/pay/${invoice.id}`}
-                    className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs text-white/70"
-                  >
-                    View
-                  </Link>
+                      View
+                    </Link>
+                  </div>
                 </div>
               </div>
             ))}

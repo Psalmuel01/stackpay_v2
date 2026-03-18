@@ -70,7 +70,8 @@ export type DemoPaymentLink = {
   invoiceId?: string;
   planId?: string;
   currency: Currency;
-  suggestedAmounts?: number[];
+  defaultAmount?: number;
+  amountStep?: number;
   allowCustomAmount?: boolean;
   isUniversal?: boolean;
   isActive: boolean;
@@ -214,7 +215,8 @@ type DemoContextValue = {
       currency: Currency;
       invoiceId?: string;
       planId?: string;
-      suggestedAmounts?: number[];
+      defaultAmount?: number;
+      amountStep?: number;
       allowCustomAmount?: boolean;
       isUniversal?: boolean;
     }) => DemoPaymentLink;
@@ -230,7 +232,7 @@ type DemoContextValue = {
   };
 };
 
-const STORAGE_KEY = "stackpay-demo-state-v3";
+const STORAGE_KEY = "stackpay-demo-state-v4";
 const DemoContext = createContext<DemoContextValue | null>(null);
 
 function isoAt(iso: string, secondsToAdd = 0) {
@@ -284,14 +286,14 @@ function createUniqueSlug(state: DemoState, value: string, fallback: string) {
   return `${base}-${attempt}`;
 }
 
-function defaultSuggestedAmounts(currency: Currency) {
+function defaultAmountConfig(currency: Currency) {
   if (currency === "sBTC") {
-    return [0.01, 0.025, 0.05];
+    return { defaultAmount: 0.01, amountStep: 0.005 };
   }
   if (currency === "STX") {
-    return [50, 100, 250];
+    return { defaultAmount: 50, amountStep: 25 };
   }
-  return [25, 50, 100];
+  return { defaultAmount: 25, amountStep: 25 };
 }
 
 function seedState(): DemoState {
@@ -380,7 +382,8 @@ function seedState(): DemoState {
         description: "Share a single public payment entry point for custom one-time payments.",
         mode: "donation",
         currency: "sBTC",
-        suggestedAmounts: [0.01, 0.025, 0.05],
+        defaultAmount: 0.025,
+        amountStep: 0.005,
         allowCustomAmount: true,
         isUniversal: true,
         isActive: true,
@@ -673,6 +676,7 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
         mode: "invoice",
         currency: invoice.currency,
         invoiceId: invoice.id,
+        defaultAmount: invoice.amount,
         allowCustomAmount: false,
         isActive: true,
         createdAt: now,
@@ -759,11 +763,13 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
         currency: input.currency,
         invoiceId: input.invoiceId,
         planId: input.planId,
-        suggestedAmounts:
+        defaultAmount:
           input.mode === "donation"
-            ? (input.suggestedAmounts?.length
-                ? input.suggestedAmounts.map((amount) => currencyValue(amount))
-                : defaultSuggestedAmounts(input.currency))
+            ? currencyValue(input.defaultAmount ?? defaultAmountConfig(input.currency).defaultAmount)
+            : undefined,
+        amountStep:
+          input.mode === "donation"
+            ? currencyValue(input.amountStep ?? defaultAmountConfig(input.currency).amountStep)
             : undefined,
         allowCustomAmount: input.allowCustomAmount ?? input.mode === "donation",
         isUniversal: input.isUniversal,
@@ -798,7 +804,8 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
         description: "Universal public payment link for one-time customer payments.",
         mode: "donation" as const,
         currency: stateRef.current.merchant.defaultCurrency,
-        suggestedAmounts: defaultSuggestedAmounts(stateRef.current.merchant.defaultCurrency),
+        defaultAmount: defaultAmountConfig(stateRef.current.merchant.defaultCurrency).defaultAmount,
+        amountStep: defaultAmountConfig(stateRef.current.merchant.defaultCurrency).amountStep,
         allowCustomAmount: true,
         isUniversal: true,
         isActive: true,
@@ -984,7 +991,7 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
       }
 
       const amount = currencyValue(
-        input.amount && input.amount > 0 ? input.amount : link.suggestedAmounts?.[0] ?? 0
+        input.amount && input.amount > 0 ? input.amount : link.defaultAmount ?? 0
       );
       if (amount <= 0) {
         return null;

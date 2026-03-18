@@ -22,11 +22,11 @@ const currencies: Currency[] = ["USDCx", "sBTC", "STX"];
 export default function SubscriptionsPage() {
   const { state, actions } = useDemo();
   const [planName, setPlanName] = useState("");
-  const [planAmount, setPlanAmount] = useState("120");
+  const [planAmount, setPlanAmount] = useState("");
   const [planCurrency, setPlanCurrency] = useState<Currency>("USDCx");
   const [interval, setInterval] = useState(intervals[1]);
-  const [subscriberName, setSubscriberName] = useState("Mint Labs");
-  const [subscriberEmail, setSubscriberEmail] = useState("billing@mintlabs.io");
+  const [subscriberName, setSubscriberName] = useState("");
+  const [subscriberEmail, setSubscriberEmail] = useState("");
   const [selectedPlanId, setSelectedPlanId] = useState(state.plans[0]?.id ?? "");
 
   return (
