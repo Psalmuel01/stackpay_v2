@@ -114,6 +114,7 @@ Server-only:
 
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `SUPABASE_SECRET_KEY`
+- `STACKPAY_STACKS_API_URL` (optional override for tx result polling)
 
 ## Current API Routes
 

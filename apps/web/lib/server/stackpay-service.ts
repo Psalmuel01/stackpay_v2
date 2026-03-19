@@ -68,7 +68,9 @@ type CreateUniversalQrInput = {
 type ChainConfirmationInput = {
   id: string;
   txId: string;
-  onchainId: string;
+  onchainId?: string | null;
+  status?: "pending_chain" | "failed";
+  failureReason?: string | null;
 };
 
 async function selectSingle<T extends Row>(table: string, query: Record<string, string>) {
@@ -179,6 +181,20 @@ export async function listInvoicesForWallet(walletAddress: string) {
   })) as Row[];
 }
 
+export async function getInvoiceByIdOrOnchainId(invoiceId: string) {
+  const direct = await selectSingle<Row>("invoices", {
+    id: `eq.${invoiceId}`,
+  });
+
+  if (direct) {
+    return direct;
+  }
+
+  return selectSingle<Row>("invoices", {
+    onchain_invoice_id: `eq.${invoiceId}`,
+  });
+}
+
 export async function createInvoiceDraft(input: CreateInvoiceInput) {
   ensurePositiveAmount(input.amount, "amount");
   const merchant = await upsertMerchantProfile({ walletAddress: input.walletAddress });
@@ -231,8 +247,13 @@ export async function confirmInvoiceChain(input: ChainConfirmationInput) {
     { id: input.id },
     {
       tx_id: input.txId,
-      onchain_invoice_id: input.onchainId,
-      status: "pending_chain",
+      onchain_invoice_id: input.onchainId ?? null,
+      status: input.status ?? "pending_chain",
+      metadata: input.failureReason
+        ? {
+            lastChainError: input.failureReason,
+          }
+        : undefined,
     }
   )) as Row[];
 
@@ -247,7 +268,9 @@ export async function confirmInvoiceChain(input: ChainConfirmationInput) {
     invoice.id as string,
     "invoice.chain.submitted",
     {
-      onchainInvoiceId: input.onchainId,
+      onchainInvoiceId: input.onchainId ?? null,
+      status: input.status ?? "pending_chain",
+      failureReason: input.failureReason ?? null,
     },
     input.txId
   );

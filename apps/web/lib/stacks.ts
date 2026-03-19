@@ -1,5 +1,19 @@
 import { AppConfig, UserSession } from "@stacks/auth";
+import { openContractCall } from "@stacks/connect";
 import { StacksMainnet, StacksTestnet } from "@stacks/network";
+import {
+  AnchorMode,
+  noneCV,
+  PostConditionMode,
+  principalCV,
+  someCV,
+  stringAsciiCV,
+  stringUtf8CV,
+  trueCV,
+  falseCV,
+  uintCV,
+  type ClarityValue,
+} from "@stacks/transactions";
 
 const appConfig = new AppConfig(["store_write", "publish_data"]);
 
@@ -20,4 +34,71 @@ export function getConnectedWalletAddress() {
     process.env.NEXT_PUBLIC_STACKS_NETWORK === "mainnet" ? "mainnet" : "testnet";
 
   return data.profile?.stxAddress?.[networkKey] ?? null;
+}
+
+type ContractIntentArg =
+  | { type: "principal"; value: string }
+  | { type: "uint"; value: string }
+  | { type: "bool"; value: boolean }
+  | { type: "string-ascii"; value: string }
+  | { type: "string-utf8"; value: string }
+  | { type: "optional-string-ascii"; value: string | null }
+  | { type: "optional-uint"; value: string | null };
+
+export type StackPayContractIntent = {
+  contractId: string;
+  contractName: string;
+  functionName: string;
+  network: string;
+  arguments: ContractIntentArg[];
+  notes: string[];
+};
+
+function toClarityValue(arg: ContractIntentArg): ClarityValue {
+  switch (arg.type) {
+    case "principal":
+      return principalCV(arg.value);
+    case "uint":
+      return uintCV(BigInt(arg.value));
+    case "bool":
+      return arg.value ? trueCV() : falseCV();
+    case "string-ascii":
+      return stringAsciiCV(arg.value);
+    case "string-utf8":
+      return stringUtf8CV(arg.value);
+    case "optional-string-ascii":
+      return arg.value ? someCV(stringAsciiCV(arg.value)) : noneCV();
+    case "optional-uint":
+      return arg.value ? someCV(uintCV(BigInt(arg.value))) : noneCV();
+    default:
+      return noneCV();
+  }
+}
+
+export async function submitContractIntent(
+  intent: StackPayContractIntent,
+  callbacks: {
+    onFinish?: (data: { txId: string }) => void;
+    onCancel?: () => void;
+  } = {}
+) {
+  const [contractAddress, contractName] = intent.contractId.split(".");
+
+  if (!contractAddress || !contractName) {
+    throw new Error("Invalid contract id.");
+  }
+
+  return openContractCall({
+    userSession,
+    network: intent.network === "mainnet" ? "mainnet" : "testnet",
+    anchorMode: AnchorMode.Any,
+    postConditionMode: PostConditionMode.Deny,
+    postConditions: [],
+    contractAddress,
+    contractName,
+    functionName: intent.functionName,
+    functionArgs: intent.arguments.map(toClarityValue),
+    onFinish: callbacks.onFinish,
+    onCancel: callbacks.onCancel,
+  });
 }

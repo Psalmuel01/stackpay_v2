@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import GlassCard from "@/components/GlassCard";
 import ConnectWalletButton from "@/components/app/ConnectWalletButton";
@@ -17,9 +18,46 @@ export default function HostedPaymentPage({
   params: { invoiceId: string };
 }) {
   const { state, actions } = useDemo();
-  const invoice = state.invoices.find((item) => item.id === params.invoiceId);
+  const [remoteInvoice, setRemoteInvoice] = useState<any | null>(null);
+  const [loadingRemote, setLoadingRemote] = useState(false);
+  const localInvoice = state.invoices.find((item) => item.id === params.invoiceId) ?? null;
+  const invoice = localInvoice ?? remoteInvoice;
   const receipt = state.receipts.find((item) => item.invoiceId === params.invoiceId);
   const connectedAddress = getConnectedWalletAddress();
+
+  useEffect(() => {
+    if (state.invoices.find((item) => item.id === params.invoiceId)) {
+      setRemoteInvoice(null);
+      return;
+    }
+
+    let cancelled = false;
+    setLoadingRemote(true);
+
+    fetch(`/api/invoices/${params.invoiceId}`)
+      .then(async (response) => {
+        if (!response.ok) {
+          return null;
+        }
+
+        const payload = await response.json();
+        return payload.data;
+      })
+      .then((payload) => {
+        if (!cancelled) {
+          setRemoteInvoice(payload);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoadingRemote(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [params.invoiceId, state.invoices]);
 
   if (!invoice) {
     return (
@@ -28,7 +66,9 @@ export default function HostedPaymentPage({
           <GlassCard>
             <div className="text-3xl font-semibold text-white">Invoice not found</div>
             <div className="mt-3 text-sm text-white/60">
-              This demo checkout only knows about invoices created in the current local workspace.
+              {loadingRemote
+                ? "Looking up the invoice in StackPay storage."
+                : "This checkout could not find a matching invoice locally or in Supabase."}
             </div>
             <Link
               href="/create-invoice"
@@ -42,7 +82,9 @@ export default function HostedPaymentPage({
     );
   }
 
-  const disabled = invoice.status !== "pending";
+  const isRemoteOnly = !localInvoice && Boolean(remoteInvoice);
+  const disabled =
+    isRemoteOnly || (invoice.status !== "pending" && invoice.status !== "pending_chain");
 
   return (
     <main className="flex min-h-screen items-center px-6 py-12">
@@ -76,7 +118,9 @@ export default function HostedPaymentPage({
                         ? "Expired"
                         : invoice.status === "draft"
                           ? "Draft"
-                          : "Pending"
+                          : invoice.status === "pending_chain"
+                            ? "Awaiting payment"
+                            : "Pending"
                   }
                 />
               </div>
@@ -88,12 +132,16 @@ export default function HostedPaymentPage({
                 </div>
                 <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-4">
                   <div className="text-[11px] uppercase tracking-[0.22em] text-white/35">Customer</div>
-                  <div className="mt-2 text-sm text-white/75">{invoice.customer}</div>
+                  <div className="mt-2 text-sm text-white/75">
+                    {invoice.customer ?? invoice.customer_name ?? "No customer label"}
+                  </div>
                 </div>
                 <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-4">
                   <div className="text-[11px] uppercase tracking-[0.22em] text-white/35">Expires</div>
                   <div className="mt-2 text-sm text-white/75">
-                    {invoice.expiresAt ? formatDateTime(invoice.expiresAt) : "No expiry"}
+                    {invoice.expiresAt || invoice.expires_at
+                      ? formatDateTime(invoice.expiresAt ?? invoice.expires_at)
+                      : "No expiry"}
                   </div>
                 </div>
               </div>
@@ -122,11 +170,24 @@ export default function HostedPaymentPage({
                     ? "Payment complete"
                     : invoice.status === "expired"
                       ? "Invoice expired"
+                      : isRemoteOnly
+                        ? "Awaiting hosted payment integration"
                       : "Confirm payment"}
                 </button>
                 {receipt ? (
                   <div className="w-full max-w-sm rounded-2xl bg-white/8 px-4 py-4 text-sm text-white/75">
                     Receipt {receipt.id} issued at {formatDateTime(receipt.timestamp)}.
+                  </div>
+                ) : null}
+                {invoice.onchain_invoice_id ? (
+                  <div className="w-full max-w-sm rounded-2xl bg-white/8 px-4 py-4 text-sm text-white/75">
+                    On-chain invoice id {invoice.onchain_invoice_id}
+                  </div>
+                ) : null}
+                {isRemoteOnly ? (
+                  <div className="max-w-md text-xs text-white/45">
+                    This invoice was loaded from Supabase by id. Customer payment confirmation on this hosted page
+                    still needs the real on-chain payment integration.
                   </div>
                 ) : null}
               </div>

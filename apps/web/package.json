@@ -14,6 +14,7 @@
     "@stacks/auth": "^6.7.0",
     "@stacks/connect": "^7.0.4",
     "@stacks/network": "^6.7.0",
+    "@stacks/transactions": "^7.0.2",
     "clsx": "^2.1.1",
     "framer-motion": "^11.3.11",
     "lucide-react": "^0.469.0",

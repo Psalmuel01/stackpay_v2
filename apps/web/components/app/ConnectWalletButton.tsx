@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { showConnect } from "@stacks/connect";
 import { getConnectedWalletAddress, userSession } from "@/lib/stacks";
 import { useDemo } from "@/components/app/DemoProvider";
@@ -11,9 +11,26 @@ function truncateAddress(address: string) {
 
 export default function ConnectWalletButton() {
   const { state } = useDemo();
-  const [connected, setConnected] = useState(userSession.isUserSignedIn());
-  const [address, setAddress] = useState<string | null>(getConnectedWalletAddress());
+  const [connected, setConnected] = useState(false);
+  const [address, setAddress] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
+
+  const ref = useRef<HTMLDivElement>(null);
+
+useEffect(() => {
+  function handleClickOutside(e: MouseEvent) {
+    if (ref.current && !ref.current.contains(e.target as Node)) {
+      setOpen(false);
+    }
+  }
+  document.addEventListener("mousedown", handleClickOutside);
+  return () => document.removeEventListener("mousedown", handleClickOutside);
+}, []);
+
+  useEffect(() => {
+    setConnected(userSession.isUserSignedIn());
+    setAddress(getConnectedWalletAddress());
+  }, []);
 
   const appDetails = useMemo(
     () => ({
@@ -66,7 +83,7 @@ export default function ConnectWalletButton() {
   }
 
   return (
-    <div className="relative">
+    <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen((value) => !value)}
         className="flex items-center gap-3 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/80 transition hover:border-white/20 hover:text-white"
@@ -78,7 +95,7 @@ export default function ConnectWalletButton() {
         <div className="absolute right-0 top-[calc(100%+12px)] w-72 rounded-3xl border border-white/10 bg-[#0a0a0a]/95 p-3 shadow-[0_20px_60px_rgba(0,0,0,0.45)] backdrop-blur">
           <div className="rounded-2xl bg-white/5 px-4 py-4">
             <div className="text-[11px] uppercase tracking-[0.24em] text-white/35">Connected wallet</div>
-            <div className="mt-2 font-mono text-xs text-white/75">{address}</div>
+            <div className="mt-2 font-mono text-xs text-white/75">{address.slice(0, 6)}...{address.slice(-4)}</div>
           </div>
           <div className="mt-3 rounded-2xl bg-white/5 px-4 py-4">
             <div className="text-[11px] uppercase tracking-[0.24em] text-white/35">Demo balances</div>
