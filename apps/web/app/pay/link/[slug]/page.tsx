@@ -45,6 +45,17 @@ function truncateAddress(address: string) {
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
 }
 
+function sanitizeDecimalInput(value: string) {
+  const sanitized = value.replace(/[^0-9.]/g, "");
+  const [whole = "", ...fractionParts] = sanitized.split(".");
+
+  if (fractionParts.length === 0) {
+    return whole;
+  }
+
+  return `${whole}.${fractionParts.join("")}`;
+}
+
 export default function PublicPaymentLinkPage({
   params,
 }: {
@@ -59,6 +70,7 @@ export default function PublicPaymentLinkPage({
   const [selectedCurrency, setSelectedCurrency] = useState<Currency>("sBTC");
   const [email, setEmail] = useState("");
   const [amount, setAmount] = useState("");
+  const [description, setDescription] = useState("");
 
   useEffect(() => {
     setConnectedAddress(getConnectedWalletAddress());
@@ -155,6 +167,7 @@ export default function PublicPaymentLinkPage({
           amount: numericAmount,
           currency: selectedCurrency,
           customerEmail: email,
+          description,
           expiresInSeconds: 24 * 60 * 60,
         }),
       });
@@ -186,6 +199,7 @@ export default function PublicPaymentLinkPage({
                     amount: preparedInvoice.amount,
                     currency: preparedInvoice.currency,
                     customerEmail: preparedInvoice.customer_email,
+                    description: preparedInvoice.description,
                     expiresInSeconds: preparedInvoice.expires_in_seconds,
                   }),
                 }
@@ -226,6 +240,23 @@ export default function PublicPaymentLinkPage({
     }
   }
 
+  if (loadingRemote) {
+    return (
+      <main className="flex min-h-screen items-center px-6 py-12">
+        <div className="mx-auto w-full max-w-3xl">
+          <GlassCard className="border border-white/20">
+            <div className="space-y-4">
+              <div className="text-xs uppercase tracking-[0.35em] text-white/40">Loading checkout</div>
+              <div className="h-10 w-64 rounded-2xl bg-white/10" />
+              <div className="h-4 w-full max-w-xl rounded-full bg-white/10" />
+              <div className="h-4 w-3/4 rounded-full bg-white/10" />
+            </div>
+          </GlassCard>
+        </div>
+      </main>
+    );
+  }
+
   if (!remoteLink) {
     return (
       <main className="flex min-h-screen items-center px-6 py-12">
@@ -233,7 +264,7 @@ export default function PublicPaymentLinkPage({
           <GlassCard>
             <div className="text-3xl font-semibold text-white">Payment link not found</div>
             <div className="mt-3 text-sm text-white/60">
-              {loadingRemote ? "Looking up the public route." : "This public payment route could not be found."}
+              This public payment route could not be found.
             </div>
           </GlassCard>
         </div>
@@ -334,8 +365,9 @@ export default function PublicPaymentLinkPage({
                 <input
                   className="mt-3 w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white/75 outline-none"
                   value={amount}
-                  onChange={(event) => setAmount(event.target.value)}
+                  onChange={(event) => setAmount(sanitizeDecimalInput(event.target.value))}
                   placeholder={`Enter amount in ${selectedCurrency}`}
+                  inputMode="decimal"
                 />
               ) : null}
             </div>
@@ -345,6 +377,12 @@ export default function PublicPaymentLinkPage({
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               placeholder="Receipt email (optional)"
+            />
+            <input
+              className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/75 outline-none"
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              placeholder="Description (optional)"
             />
 
             <button

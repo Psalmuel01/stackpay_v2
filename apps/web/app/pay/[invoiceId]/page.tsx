@@ -240,6 +240,27 @@ export default function HostedPaymentPage({
     }
   }
 
+  if (loading) {
+    return (
+      <main className="flex min-h-screen items-center px-6 py-12">
+        <div className="mx-auto w-full max-w-3xl">
+          <GlassCard className="border border-white/20">
+            <div className="space-y-5">
+              <div className="text-xs uppercase tracking-[0.35em] text-white/40">Loading invoice</div>
+              <div className="h-10 w-56 rounded-2xl bg-white/10" />
+              <div className="h-16 w-40 rounded-3xl bg-white/10" />
+              <div className="grid gap-3 md:grid-cols-3">
+                <div className="h-24 rounded-2xl bg-white/10" />
+                <div className="h-24 rounded-2xl bg-white/10" />
+                <div className="h-24 rounded-2xl bg-white/10" />
+              </div>
+            </div>
+          </GlassCard>
+        </div>
+      </main>
+    );
+  }
+
   if (!invoice) {
     return (
       <main className="flex min-h-screen items-center px-6 py-12">
@@ -247,7 +268,7 @@ export default function HostedPaymentPage({
           <GlassCard>
             <div className="text-3xl font-semibold text-white">Invoice not found</div>
             <div className="mt-3 text-sm text-white/60">
-              {loading ? "Looking up the invoice." : "This hosted payment page could not find a matching invoice."}
+              This hosted payment page could not find a matching invoice.
             </div>
             <Link
               href="/create-invoice"

@@ -53,6 +53,7 @@ export async function POST(
       currency: payload.currency,
       customerName: payload.customerName,
       customerEmail: payload.customerEmail,
+      description: payload.description,
       expiresInSeconds: payload.expiresInSeconds,
       confirmedAt: sync.confirmedAt,
     });

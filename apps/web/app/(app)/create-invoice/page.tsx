@@ -60,10 +60,21 @@ function truncateAddress(address: string) {
   return `${address.substring(0, 6)}...${address.slice(-4)}`;
 }
 
+function sanitizeDecimalInput(value: string) {
+  const sanitized = value.replace(/[^0-9.]/g, "");
+  const [whole = "", ...fractionParts] = sanitized.split(".");
+
+  if (fractionParts.length === 0) {
+    return whole;
+  }
+
+  return `${whole}.${fractionParts.join("")}`;
+}
+
 export default function CreateInvoicePage() {
   const [flow, setFlow] = useState<CreateFlow>("standard");
   const [currency, setCurrency] = useState<Currency>("STX");
-  const [amount, setAmount] = useState(Number);
+  const [amount, setAmount] = useState("");
   const [expiration, setExpiration] = useState<ExpirationOption>(24);
   const [customExpirationValue, setCustomExpirationValue] = useState("");
   const [customExpirationUnit, setCustomExpirationUnit] = useState<"minutes" | "hours" | "days">("minutes");
@@ -135,7 +146,10 @@ export default function CreateInvoicePage() {
     if (flow === "multipay") {
       return `stackpay.app/pay/link/${slugify(slug || "multipay")}`;
     }
-    return "stackpay.app/pay/invoice";
+    if (result?.txId && !result?.href) {
+      return "Waiting for confirmed invoice link";
+    }
+    return "Generated invoice link appears after confirmation";
   }, [flow, result, slug]);
 
   async function handleCopy() {
@@ -460,8 +474,9 @@ export default function CreateInvoicePage() {
                   <input
                     className="w-full bg-transparent text-sm text-white/80 outline-none"
                     value={amount}
-                    onChange={(event) => setAmount(Number(event.target.value))}
+                    onChange={(event) => setAmount(sanitizeDecimalInput(event.target.value))}
                     placeholder={flow === "multipay" ? "Starting checkout amount" : "Invoice amount"}
+                    inputMode="decimal"
                   />
                   <span className="text-xs text-white/55">{currency}</span>
                 </div>
@@ -600,8 +615,9 @@ export default function CreateInvoicePage() {
                     <input
                       className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/80 outline-none"
                       value={amountStep}
-                      onChange={(event) => setAmountStep(event.target.value)}
+                      onChange={(event) => setAmountStep(sanitizeDecimalInput(event.target.value))}
                       placeholder="Plus/minus increment"
+                      inputMode="decimal"
                     />
                   </div>
                   <div>

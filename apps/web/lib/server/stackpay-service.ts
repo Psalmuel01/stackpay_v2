@@ -89,6 +89,7 @@ type PreparePublicInvoiceFromLinkInput = {
   currency: Currency;
   customerName?: string;
   customerEmail?: string;
+  description?: string;
   expiresInSeconds?: number | null;
 };
 
@@ -100,6 +101,7 @@ type ConfirmPublicInvoiceInput = {
   currency: Currency;
   customerName?: string;
   customerEmail?: string;
+  description?: string;
   expiresInSeconds: number;
   confirmedAt?: number | null;
 };
@@ -583,7 +585,7 @@ export async function createUniversalQrDraft(input: CreateUniversalQrInput) {
   );
   const title = input.title || `${merchantName} QR`;
   const description =
-    input.description || "Permanent universal QR route for daily payments across supported assets.";
+    input.description || "Multi-purpose payments across supported assets.";
   const recipientAddress =
     input.recipientAddress?.trim() ||
     String(ensuredMerchant.settlement_wallet || walletAddress);
@@ -652,8 +654,9 @@ export async function preparePublicInvoiceFromLink(input: PreparePublicInvoiceFr
 
   const expiresInSeconds =
     input.expiresInSeconds && input.expiresInSeconds > 0 ? input.expiresInSeconds : 86_400;
-  const description =
-    String(paymentLink.description || paymentLink.title || "Payment via StackPay").trim();
+  const description = String(
+    input.description?.trim() || paymentLink.description || paymentLink.title || "Payment via StackPay"
+  ).trim();
   const contractIntent = buildCreatePublicInvoiceFromLinkIntent({
     onchainLinkId: String(paymentLink.onchain_link_id),
     currency: input.currency,
@@ -697,7 +700,9 @@ export async function confirmPublicInvoiceCreation(input: ConfirmPublicInvoiceIn
       status: "pending",
       amount: input.amount,
       currency: input.currency,
-      description: String(paymentLink.description || paymentLink.title || "Payment via StackPay"),
+      description: String(
+        input.description?.trim() || paymentLink.description || paymentLink.title || "Payment via StackPay"
+      ),
       customer_name: input.customerName ?? "",
       customer_email: input.customerEmail ?? "",
       recipient_address: String(paymentLink.merchant?.settlement_wallet || ""),
