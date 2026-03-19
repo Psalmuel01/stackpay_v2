@@ -250,7 +250,7 @@ export default function ProfilePage() {
               {saving ? "Saving..." : "Save changes"}
             </button>
 
-            {saved ? <div className="text-xs text-white/60">Merchant profile saved to Supabase.</div> : null}
+            {saved ? <div className="text-xs text-white/60">Merchant profile saved.</div> : null}
             {error ? <div className="text-xs text-rose-300">{error}</div> : null}
           </form>
         </GlassCard>

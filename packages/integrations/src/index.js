@@ -23,7 +23,7 @@ export const integrationLayers = [
 
 export const apiResources = [
   { method: "POST", path: "/api/merchant/profile", purpose: "Upsert merchant profile metadata keyed to a wallet address." },
-  { method: "GET", path: "/api/invoices", purpose: "List invoices synced into Supabase for the connected merchant." },
+  { method: "GET", path: "/api/invoices", purpose: "List invoices synced into database for the connected merchant." },
   { method: "POST", path: "/api/invoices", purpose: "Create an invoice draft in Supabase and return the contract intent." },
   { method: "POST", path: "/api/invoices/:invoiceId/chain", purpose: "Attach tx id and on-chain invoice id after wallet submission." },
   { method: "GET", path: "/api/payment-links", purpose: "List payment links and QR routes for the connected merchant." },

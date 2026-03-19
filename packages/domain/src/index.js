@@ -62,7 +62,7 @@ export const mvpTracks = [
   {
     id: "merchant-onboarding",
     title: "Merchant onboarding",
-    outcome: "Merchant connects wallet, syncs profile metadata into Supabase, configures webhook, and sets settlement wallet.",
+    outcome: "Merchant connects wallet, syncs profile metadata into database, configures webhook, and sets settlement wallet.",
   },
   {
     id: "one-time-invoices",

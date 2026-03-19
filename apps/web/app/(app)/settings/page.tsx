@@ -6,9 +6,9 @@ import PageHeader from "@/components/app/PageHeader";
 import { settingsNavigation } from "@stackpay/ui";
 
 const summaries: Record<string, string> = {
+  "/subscriptions": "Manage recurring payments, trial periods, and subscription lifecycle.",
   "/settlements": "Configure payout rules, thresholds, and settlement execution history.",
   "/developer": "Inspect API keys, webhook deliveries, and integration test events.",
-  "/profile": "Update merchant identity, settlement wallet, defaults, and notification settings.",
 };
 
 export default function SettingsPage() {
