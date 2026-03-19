@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import GlassCard from "@/components/GlassCard";
 import PageHeader from "@/components/app/PageHeader";
@@ -14,6 +14,10 @@ import {
 
 type CreateFlow = "standard" | "multipay";
 type ExpirationOption = number | "custom";
+
+type MerchantProfile = {
+  settlement_wallet?: string | null;
+};
 
 const flows: Array<{ id: CreateFlow; label: string; summary: string }> = [
   {
@@ -45,39 +49,12 @@ function slugify(value: string) {
     .replace(/^-+|-+$/g, "");
 }
 
-function parseMetadata(value: string) {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return {};
+function truncateAddress(address: string) {
+  if (address.length <= 12) {
+    return address;
   }
 
-  if (trimmed.startsWith("{")) {
-    try {
-      return JSON.parse(trimmed);
-    } catch {
-      return { note: trimmed };
-    }
-  }
-
-  const pairs = trimmed
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-
-  const result: Record<string, string> = {};
-  for (const pair of pairs) {
-    const [rawKey, ...rest] = pair.split("=");
-    const key = rawKey?.trim();
-    const nextValue = rest.join("=").trim();
-
-    if (!key) {
-      continue;
-    }
-
-    result[key] = nextValue || "true";
-  }
-
-  return Object.keys(result).length ? result : { note: trimmed };
+  return `${address.substring(0, 6)}...${address.slice(-4)}`;
 }
 
 export default function CreateInvoicePage() {
@@ -87,19 +64,16 @@ export default function CreateInvoicePage() {
   const [amount, setAmount] = useState("");
   const [expiration, setExpiration] = useState<ExpirationOption>(24);
   const [customExpirationHours, setCustomExpirationHours] = useState("48");
-
   const [customer, setCustomer] = useState("");
   const [email, setEmail] = useState("");
   const [description, setDescription] = useState("");
-  const [metadata, setMetadata] = useState("");
-
   const [title, setTitle] = useState("");
   const [slug, setSlug] = useState("");
   const [amountStep, setAmountStep] = useState("");
-
+  const [merchantProfile, setMerchantProfile] = useState<MerchantProfile | null>(null);
   const [result, setResult] = useState<{
     title: string;
-    href: string;
+    href?: string;
     summary: string;
     contractIntent?: StackPayContractIntent;
     storage?: string;
@@ -109,51 +83,103 @@ export default function CreateInvoicePage() {
   const [copied, setCopied] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
   const connectedAddress = getConnectedWalletAddress();
+  const resolvedRecipientAddress = merchantProfile?.settlement_wallet || connectedAddress || "";
+
+  useEffect(() => {
+    if (!connectedAddress) {
+      setMerchantProfile(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    fetch(`/api/merchant/profile?walletAddress=${encodeURIComponent(connectedAddress)}`)
+      .then(async (response) => {
+        if (!response.ok) {
+          return null;
+        }
+
+        const payload = await response.json();
+        return (payload.data ?? null) as MerchantProfile | null;
+      })
+      .then((profile) => {
+        if (!cancelled) {
+          setMerchantProfile(profile);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setMerchantProfile(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [connectedAddress]);
 
   const previewLabel = useMemo(() => {
-    if (result) {
+    if (result?.href) {
       return result.href.replace(/^\//, "stackpay.app/");
     }
     if (flow === "multipay") {
       return `stackpay.app/pay/link/${slugify(slug || "multipay")}`;
     }
-    return "stackpay.app/pay/demo-preview";
+    return "stackpay.app/pay/invoice";
   }, [flow, result, slug]);
 
   async function handleCopy() {
-    if (!result) {
+    if (!result?.href) {
       return;
     }
+
     await navigator.clipboard.writeText(`${window.location.origin}${result.href}`);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1800);
   }
 
-  async function syncInvoiceToChain(invoiceId: string, txId: string) {
+  async function confirmInvoiceFromChain(input: {
+    txId: string;
+    amount: number;
+    currency: Currency;
+    description: string;
+    customerName: string;
+    customerEmail: string;
+    recipientAddress: string;
+    expiresInSeconds: number;
+  }) {
     for (let attempt = 0; attempt < 20; attempt += 1) {
-      const response = await fetch(`/api/invoices/${invoiceId}/chain`, {
+      const response = await fetch("/api/invoices/confirm", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ txId }),
+        body: JSON.stringify({
+          walletAddress: connectedAddress,
+          ...input,
+        }),
       });
 
       const payload = await response.json();
       if (!response.ok) {
-        throw new Error(payload?.error?.message ?? "Failed to reconcile invoice transaction.");
+        throw new Error(payload?.error?.message ?? "Failed to confirm invoice transaction.");
       }
 
       if (payload.data?.sync?.status === "success" && payload.data?.sync?.onchainInvoiceId) {
         return {
           invoice: payload.data.invoice,
-          txId,
+          txId: input.txId,
           onchainInvoiceId: payload.data.sync.onchainInvoiceId as string,
         };
       }
 
-      if (payload.data?.sync?.status === "failed" || payload.data?.sync?.status === "abort_by_response") {
+      if (
+        payload.data?.sync?.status === "failed" ||
+        payload.data?.sync?.status === "abort_by_response" ||
+        payload.data?.sync?.status === "abort_by_post_condition"
+      ) {
         throw new Error(payload.data?.sync?.result ?? "Invoice transaction failed on-chain.");
       }
 
@@ -162,7 +188,7 @@ export default function CreateInvoicePage() {
 
     return {
       invoice: null,
-      txId,
+      txId: input.txId,
       onchainInvoiceId: null,
     };
   }
@@ -190,9 +216,15 @@ export default function CreateInvoicePage() {
         return;
       }
 
+      if (!resolvedRecipientAddress) {
+        setError("Save a settlement wallet in Settings or connect a wallet first.");
+        return;
+      }
+
       setSubmitting(true);
 
       try {
+        const expiresInSeconds = resolvedExpirationHours * 60 * 60;
         const response = await fetch("/api/invoices", {
           method: "POST",
           headers: {
@@ -200,25 +232,22 @@ export default function CreateInvoicePage() {
           },
           body: JSON.stringify({
             walletAddress: connectedAddress,
-            kind: "standard",
             amount: numericAmount,
             currency,
             description,
             customerName: customer,
             customerEmail: email,
-            recipientAddress: state.merchant.settlementWallet || connectedAddress,
-            recipientLabel: state.merchant.settlementWallet ? "Settlement wallet" : "Connected wallet",
-            expiresInSeconds: resolvedExpirationHours * 60 * 60,
-            metadata: parseMetadata(metadata),
+            recipientAddress: resolvedRecipientAddress,
+            expiresInSeconds,
           }),
         });
 
         const payload = await response.json();
         if (!response.ok) {
-          throw new Error(payload?.error?.message ?? "Failed to create invoice.");
+          throw new Error(payload?.error?.message ?? "Failed to prepare invoice.");
         }
 
-        const draftInvoice = payload.data.invoice;
+        const preparedInvoice = payload.data.invoice;
         const contractIntent = payload.data.contractIntent as StackPayContractIntent;
 
         await submitContractIntent(contractIntent, {
@@ -227,30 +256,40 @@ export default function CreateInvoicePage() {
           },
           onFinish: async ({ txId }) => {
             try {
-              const chain = await syncInvoiceToChain(draftInvoice.id, txId);
               setResult({
-                title: chain.onchainInvoiceId ?? draftInvoice.invoice_key ?? draftInvoice.id,
-                href: chain.onchainInvoiceId ? `/pay/${chain.onchainInvoiceId}` : `/pay/${draftInvoice.id}`,
-                summary: chain.onchainInvoiceId
-                  ? "Invoice created on-chain and synced into Supabase. The generated link now uses the on-chain invoice id."
-                  : "Invoice transaction was broadcast. Supabase has the draft and tx id, but the chain result is still pending.",
+                title: "Awaiting confirmation",
+                summary: "Transaction broadcast. Waiting for the chain to confirm and return the invoice id.",
                 contractIntent,
-                storage: "Supabase + Stacks",
+                storage: "Stacks pending",
+                txId,
+              });
+
+              const chain = await confirmInvoiceFromChain({
+                txId,
+                amount: preparedInvoice.amount,
+                currency,
+                description: preparedInvoice.description,
+                customerName: preparedInvoice.customer_name,
+                customerEmail: preparedInvoice.customer_email,
+                recipientAddress: preparedInvoice.recipient_address,
+                expiresInSeconds: preparedInvoice.expires_in_seconds,
+              });
+
+              setResult({
+                title: chain.onchainInvoiceId ?? "Invoice created",
+                href: chain.onchainInvoiceId ? `/pay/${chain.onchainInvoiceId}` : undefined,
+                summary: chain.onchainInvoiceId
+                  ? "Invoice created on-chain and stored in Supabase. The hosted link now uses the on-chain invoice id."
+                  : "Transaction is still pending confirmation. The invoice will be stored once the chain returns the id.",
+                contractIntent,
+                storage: chain.onchainInvoiceId ? "Supabase + Stacks" : "Stacks pending",
                 txId,
                 onchainInvoiceId: chain.onchainInvoiceId,
               });
             } catch (syncError) {
-              setError(syncError instanceof Error ? syncError.message : "Failed to sync invoice transaction.");
+              setError(syncError instanceof Error ? syncError.message : "Failed to confirm invoice transaction.");
             }
           },
-        });
-
-        setResult({
-          title: draftInvoice.invoice_key ?? draftInvoice.id,
-          href: `/pay/${draftInvoice.id}`,
-          summary: "Invoice draft created in Supabase. Confirm the wallet popup to write the invoice on-chain.",
-          contractIntent,
-          storage: "Supabase",
         });
       } catch (nextError) {
         setError(nextError instanceof Error ? nextError.message : "Failed to create invoice.");
@@ -406,21 +445,6 @@ export default function CreateInvoicePage() {
                     placeholder="What the customer is paying for"
                   />
                 </div>
-
-                <div>
-                  <label className="text-xs uppercase tracking-[0.24em] text-white/40">Metadata</label>
-                  <input
-                    className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/80 outline-none"
-                    value={metadata}
-                    onChange={(event) => setMetadata(event.target.value)}
-                    placeholder="orderId=inv-2048, source=dashboard"
-                  />
-                  <div className="mt-2 text-xs text-white/45">
-                    Optional internal labels for reconciliation and search. Use simple `key=value` pairs or JSON.
-                    Avoid sensitive customer data here because the current contract metadata field is intended to
-                    become public chain-linked context.
-                  </div>
-                </div>
               </>
             ) : (
               <>
@@ -477,9 +501,7 @@ export default function CreateInvoicePage() {
               <div>
                 <label className="text-xs uppercase tracking-[0.24em] text-white/40">Recipient</label>
                 <div className="mt-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70">
-                  {(state.merchant.settlementWallet || connectedAddress || "No wallet configured").length > 12
-                    ? `${(state.merchant.settlementWallet || connectedAddress || "").substring(0, 6)}...${(state.merchant.settlementWallet || connectedAddress || "").slice(-4)}`
-                    : state.merchant.settlementWallet || connectedAddress || "No wallet configured"}
+                  {resolvedRecipientAddress ? truncateAddress(resolvedRecipientAddress) : "No wallet configured"}
                 </div>
               </div>
               <div>
@@ -498,20 +520,18 @@ export default function CreateInvoicePage() {
                 disabled={submitting}
                 className="button-glow rounded-full border border-white/50 bg-white px-6 py-3 text-sm font-semibold text-black transition hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {submitting
-                  ? "Working..."
-                  : flow === "standard"
-                  ? "Generate invoice"
-                    : "Create MultiPay route"}
+                {submitting ? "Working..." : flow === "standard" ? "Generate invoice" : "Create MultiPay route"}
               </button>
             </div>
+
             {flow === "standard" ? (
               <div className="text-xs text-white/45">
                 {connectedAddress
                   ? `Connected merchant wallet: ${connectedAddress}`
-                  : "Connect a Stacks wallet first. StackPay stores the invoice metadata in Supabase, but the actual invoice creation contract call must come from the merchant wallet."}
+                  : "Connect a Stacks wallet first. StackPay only stores the invoice after the contract succeeds and returns the on-chain invoice id."}
               </div>
             ) : null}
+
             {error ? <div className="text-sm text-rose-300">{error}</div> : null}
           </div>
         </GlassCard>
@@ -539,7 +559,7 @@ export default function CreateInvoicePage() {
             <div className="mt-3 space-y-3">
               <button
                 onClick={handleCopy}
-                disabled={!result}
+                disabled={!result?.href}
                 className="flex w-full items-center justify-center rounded-full border border-white/10 bg-white/5 px-4 py-3 text-xs text-white/70 disabled:opacity-50"
               >
                 {copied ? "Copied" : "Copy link"}
@@ -547,12 +567,12 @@ export default function CreateInvoicePage() {
               <Link
                 href={result?.href ?? "#"}
                 className={`flex w-full items-center justify-center rounded-full border px-4 py-3 text-xs ${
-                  result
+                  result?.href
                     ? "border-white/35 bg-white text-black"
                     : "border-white/10 bg-white/5 text-white/45"
                 }`}
               >
-                {result ? "Open generated flow" : "Generated flow appears here"}
+                {result?.href ? "Open generated flow" : "Generated flow appears here"}
               </Link>
             </div>
           </GlassCard>
@@ -562,7 +582,7 @@ export default function CreateInvoicePage() {
               <div className="text-[11px] uppercase tracking-[0.26em] text-white/40">Generated result</div>
               <div className="mt-3 text-sm text-white/75">{result.summary}</div>
               <div className="mt-3 text-sm text-white">{result.title}</div>
-              <div className="mt-3 font-mono text-xs text-white/55">{result.href}</div>
+              {result.href ? <div className="mt-3 font-mono text-xs text-white/55">{result.href}</div> : null}
               {result.storage ? (
                 <div className="mt-3 text-xs uppercase tracking-[0.2em] text-white/40">
                   Stored in {result.storage}

@@ -13,11 +13,13 @@ export type TxSyncResult =
       status: "success";
       resultRepr: string | null;
       onchainId: string | null;
+      confirmedAt: number | null;
     }
   | {
       status: "abort_by_response" | "abort_by_post_condition" | "failed";
       resultRepr: string | null;
       reason: string | null;
+      confirmedAt: number | null;
     };
 
 function parseOkAsciiResult(repr: string | null) {
@@ -41,6 +43,7 @@ export async function syncInvoiceCreationTx(txId: string): Promise<TxSyncResult>
   const payload = await response.json();
   const status = payload.tx_status as string | undefined;
   const resultRepr = payload.tx_result?.repr ?? null;
+  const confirmedAt = typeof payload.burn_block_time === "number" ? payload.burn_block_time : null;
 
   if (!status || status === "pending") {
     return { status: "pending" };
@@ -51,6 +54,7 @@ export async function syncInvoiceCreationTx(txId: string): Promise<TxSyncResult>
       status: "success",
       resultRepr,
       onchainId: parseOkAsciiResult(resultRepr),
+      confirmedAt,
     };
   }
 
@@ -59,6 +63,7 @@ export async function syncInvoiceCreationTx(txId: string): Promise<TxSyncResult>
       status,
       resultRepr,
       reason: payload.tx_result?.repr ?? null,
+      confirmedAt,
     };
   }
 
@@ -66,5 +71,6 @@ export async function syncInvoiceCreationTx(txId: string): Promise<TxSyncResult>
     status: "failed",
     resultRepr,
     reason: payload.tx_status ?? null,
+    confirmedAt,
   };
 }

@@ -1,139 +1,231 @@
 "use client";
 
 import type { FormEvent } from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import GlassCard from "@/components/GlassCard";
 import PageHeader from "@/components/app/PageHeader";
-import {
-  type Currency,
-  useDemo,
-} from "@/components/app/DemoProvider";
+import { getConnectedWalletAddress } from "@/lib/stacks";
 
-const currencies: Currency[] = ["sBTC", "STX", "USDCx"];
+type MerchantProfile = {
+  display_name?: string;
+  company_name?: string;
+  email?: string;
+  slug?: string;
+  settlement_wallet?: string | null;
+  webhook_url?: string | null;
+  default_currency?: "sBTC" | "STX" | "USDCx";
+};
+
+const currencies: Array<"sBTC" | "STX" | "USDCx"> = ["sBTC", "STX", "USDCx"];
 
 export default function ProfilePage() {
-  const { state, actions } = useDemo();
+  const connectedAddress = getConnectedWalletAddress();
+  const [profile, setProfile] = useState<MerchantProfile>({
+    default_currency: "sBTC",
+  });
+  const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  function handleSave(event: FormEvent<HTMLFormElement>) {
+  useEffect(() => {
+    if (!connectedAddress) {
+      setProfile({ default_currency: "sBTC" });
+      return;
+    }
+
+    let cancelled = false;
+
+    fetch(`/api/merchant/profile?walletAddress=${encodeURIComponent(connectedAddress)}`)
+      .then(async (response) => {
+        if (!response.ok) {
+          return null;
+        }
+
+        const payload = await response.json();
+        return (payload.data ?? null) as MerchantProfile | null;
+      })
+      .then((merchant) => {
+        if (cancelled) {
+          return;
+        }
+
+        setProfile({
+          display_name: merchant?.display_name ?? "",
+          company_name: merchant?.company_name ?? "",
+          email: merchant?.email ?? "",
+          slug: merchant?.slug ?? "",
+          settlement_wallet: merchant?.settlement_wallet ?? connectedAddress,
+          webhook_url: merchant?.webhook_url ?? "",
+          default_currency: merchant?.default_currency ?? "sBTC",
+        });
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setProfile((current) => ({
+            ...current,
+            settlement_wallet: connectedAddress,
+          }));
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [connectedAddress]);
+
+  function updateField(field: keyof MerchantProfile, value: string) {
+    setProfile((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }
+
+  async function handleSave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const formData = new FormData(event.currentTarget);
-    actions.updateMerchantProfile({
-      businessName: String(formData.get("businessName") || ""),
-      email: String(formData.get("email") || ""),
-      slug: String(formData.get("slug") || ""),
-      settlementWallet: String(formData.get("wallet") || ""),
-      webhookUrl: String(formData.get("webhookUrl") || ""),
-      defaultCurrency: String(formData.get("defaultCurrency") || "sBTC") as Currency,
-    });
-    setSaved(true);
-    window.setTimeout(() => setSaved(false), 1800);
+    setError(null);
+    setSaved(false);
+
+    if (!connectedAddress) {
+      setError("Connect a wallet before saving your merchant profile.");
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      const response = await fetch("/api/merchant/profile", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          walletAddress: connectedAddress,
+          displayName: profile.display_name ?? "",
+          companyName: profile.company_name ?? "",
+          email: profile.email ?? "",
+          slug: profile.slug ?? "",
+          settlementWallet: profile.settlement_wallet || connectedAddress,
+          webhookUrl: profile.webhook_url || "",
+          defaultCurrency: profile.default_currency ?? "sBTC",
+        }),
+      });
+
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload?.error?.message ?? "Failed to save merchant profile.");
+      }
+
+      const merchant = payload.data as MerchantProfile;
+      setProfile({
+        display_name: merchant.display_name ?? "",
+        company_name: merchant.company_name ?? "",
+        email: merchant.email ?? "",
+        slug: merchant.slug ?? "",
+        settlement_wallet: merchant.settlement_wallet ?? connectedAddress,
+        webhook_url: merchant.webhook_url ?? "",
+        default_currency: merchant.default_currency ?? "sBTC",
+      });
+      setSaved(true);
+      window.setTimeout(() => setSaved(false), 1800);
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Failed to save merchant profile.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
     <div>
       <PageHeader
         title="Profile & Settings"
-        subtitle="Manage merchant identity, public checkout slug, settlement wallet, and developer defaults for the demo workspace."
+        subtitle="Save merchant metadata, default settlement wallet, and webhook details for the current connected wallet."
       />
+
       <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
         <GlassCard>
           <div className="mb-3 text-sm uppercase tracking-[0.3em] text-white/40">Merchant profile</div>
           <form onSubmit={handleSave} className="space-y-3">
             <input
-              name="businessName"
               className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70"
-              defaultValue={state.merchant.businessName}
+              value={profile.company_name ?? ""}
+              onChange={(event) => updateField("company_name", event.target.value)}
               placeholder="Business name"
             />
             <input
-              name="email"
               className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70"
-              defaultValue={state.merchant.email}
+              value={profile.display_name ?? ""}
+              onChange={(event) => updateField("display_name", event.target.value)}
+              placeholder="Display name"
+            />
+            <input
+              className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70"
+              value={profile.email ?? ""}
+              onChange={(event) => updateField("email", event.target.value)}
               placeholder="Email address"
             />
             <input
-              name="slug"
               className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70"
-              defaultValue={state.merchant.slug}
+              value={profile.slug ?? ""}
+              onChange={(event) => updateField("slug", event.target.value)}
               placeholder="Public slug"
             />
             <input
-              name="wallet"
               className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70"
-              defaultValue={state.merchant.settlementWallet}
+              value={profile.settlement_wallet ?? connectedAddress ?? ""}
+              onChange={(event) => updateField("settlement_wallet", event.target.value)}
               placeholder="Settlement wallet"
             />
             <input
-              name="webhookUrl"
               className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70"
-              defaultValue={state.merchant.webhookUrl}
+              value={profile.webhook_url ?? ""}
+              onChange={(event) => updateField("webhook_url", event.target.value)}
               placeholder="Webhook endpoint"
             />
+
             <div className="grid grid-cols-3 gap-2">
               {currencies.map((currency) => (
                 <button
                   key={currency}
                   type="button"
-                  onClick={() => actions.updateMerchantProfile({ defaultCurrency: currency })}
-                  className={`rounded-full px-4 py-2 text-xs transition ${state.merchant.defaultCurrency === currency
-                    ? "border border-white/20 bg-white text-black"
-                    : "border border-white/10 bg-white/5 text-white/70"
-                    }`}
+                  onClick={() => updateField("default_currency", currency)}
+                  className={`rounded-full px-4 py-2 text-xs transition ${
+                    profile.default_currency === currency
+                      ? "border border-white/20 bg-white text-black"
+                      : "border border-white/10 bg-white/5 text-white/70"
+                  }`}
                 >
                   {currency}
                 </button>
               ))}
             </div>
-            <input type="hidden" name="defaultCurrency" value={state.merchant.defaultCurrency} />
-            <button className="rounded-full border border-white/20 bg-white px-5 py-2 text-sm font-semibold text-black">
-              Save changes
+
+            <button
+              disabled={saving}
+              className="rounded-full border border-white/20 bg-white px-5 py-2 text-sm font-semibold text-black disabled:opacity-60"
+            >
+              {saving ? "Saving..." : "Save changes"}
             </button>
-            {saved ? <div className="text-xs text-white/60">Profile updated in local demo state.</div> : null}
+
+            {saved ? <div className="text-xs text-white/60">Merchant profile saved to Supabase.</div> : null}
+            {error ? <div className="text-xs text-rose-300">{error}</div> : null}
           </form>
         </GlassCard>
 
         <GlassCard>
-          <div className="mb-3 text-sm uppercase tracking-[0.3em] text-white/40">Connected wallets</div>
+          <div className="mb-3 text-sm uppercase tracking-[0.3em] text-white/40">Wallet state</div>
           <div className="space-y-3 text-sm text-white/70">
             <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
-              Leather · Demo connected
+              {connectedAddress ? `Connected: ${connectedAddress}` : "No wallet connected"}
             </div>
             <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
-              Xverse · Ready for wallet auth
+              {profile.settlement_wallet || connectedAddress || "Settlement wallet will default to the connected wallet."}
             </div>
             <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white/80">
-              Merchant slug: stackpay.app/{state.merchant.slug}
+              Invoice recipient defaults to the saved settlement wallet. If none is saved, StackPay uses the connected wallet address.
             </div>
           </div>
         </GlassCard>
       </div>
-
-      <GlassCard className="mt-6">
-        <div className="mb-3 text-sm uppercase tracking-[0.3em] text-white/40">Notifications</div>
-        <div className="flex flex-wrap gap-3">
-          {[
-            ["invoicePaid", "Invoice paid"],
-            ["settlementCompleted", "Settlement completed"],
-            ["subscriptionRenewed", "Subscription renewed"],
-            ["webhookFailure", "Webhook failure"],
-          ].map(([key, label]) => {
-            const active = state.merchant.notifications[key as keyof typeof state.merchant.notifications];
-            return (
-              <button
-                key={key}
-                onClick={() => actions.toggleNotification(key as keyof typeof state.merchant.notifications)}
-                className={`rounded-full px-4 py-2 text-xs transition ${active
-                  ? "border border-white/20 bg-white text-black"
-                  : "border border-white/10 bg-white/5 text-white/70"
-                  }`}
-              >
-                {label}
-              </button>
-            );
-          })}
-        </div>
-      </GlassCard>
     </div>
   );
 }

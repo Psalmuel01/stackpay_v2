@@ -30,16 +30,13 @@ type MerchantProfileInput = {
 
 type CreateInvoiceInput = {
   walletAddress: string;
-  kind?: "standard" | "subscription" | "multipay";
   amount: number;
   currency: Currency;
   description: string;
   customerName?: string;
   customerEmail?: string;
   recipientAddress: string;
-  recipientLabel?: string;
   expiresInSeconds?: number | null;
-  metadata?: Record<string, unknown>;
 };
 
 type CreatePaymentLinkInput = {
@@ -65,12 +62,24 @@ type CreateUniversalQrInput = {
   description?: string;
 };
 
+type ConfirmInvoiceInput = {
+  walletAddress: string;
+  txId: string;
+  onchainId: string;
+  amount: number;
+  currency: Currency;
+  description: string;
+  customerName?: string;
+  customerEmail?: string;
+  recipientAddress: string;
+  expiresInSeconds: number;
+  confirmedAt?: number | null;
+};
+
 type ChainConfirmationInput = {
   id: string;
   txId: string;
   onchainId?: string | null;
-  status?: "pending_chain" | "failed";
-  failureReason?: string | null;
 };
 
 async function selectSingle<T extends Row>(table: string, query: Record<string, string>) {
@@ -182,95 +191,81 @@ export async function listInvoicesForWallet(walletAddress: string) {
 }
 
 export async function getInvoiceByIdOrOnchainId(invoiceId: string) {
-  const direct = await selectSingle<Row>("invoices", {
-    id: `eq.${invoiceId}`,
-  });
-
-  if (direct) {
-    return direct;
-  }
-
   return selectSingle<Row>("invoices", {
     onchain_invoice_id: `eq.${invoiceId}`,
   });
 }
 
-export async function createInvoiceDraft(input: CreateInvoiceInput) {
+export async function prepareInvoiceCreation(input: CreateInvoiceInput) {
   ensurePositiveAmount(input.amount, "amount");
-  const merchant = await upsertMerchantProfile({ walletAddress: input.walletAddress });
+  const walletAddress = ensureWalletAddress(input.walletAddress);
+  const merchant = await getMerchantProfileByWallet(walletAddress);
   const expiresInSeconds =
     input.expiresInSeconds && input.expiresInSeconds > 0 ? input.expiresInSeconds : 86_400;
-  const invoiceKey = makeEntityKey("INV");
+  const recipientAddress = input.recipientAddress?.trim() || walletAddress;
   const contractIntent = buildCreateInvoiceIntent({
-    recipientAddress: input.recipientAddress,
+    recipientAddress,
     amount: input.amount,
     currency: input.currency,
     expiresInSeconds,
     description: input.description,
-    metadata: JSON.stringify(input.metadata ?? {}),
-    email: input.customerEmail ?? "",
-    webhookUrl: typeof merchant.webhook_url === "string" ? merchant.webhook_url : null,
-  });
-
-  const invoice = await insertRow("invoices", {
-    merchant_id: merchant.id,
-    invoice_key: invoiceKey,
-    kind: input.kind ?? "standard",
-    status: "pending_signature",
-    amount: input.amount,
-    currency: input.currency,
-    description: input.description,
-    customer_name: input.customerName ?? "",
-    customer_email: input.customerEmail ?? "",
-    recipient_address: input.recipientAddress,
-    recipient_label: input.recipientLabel ?? "Settlement wallet",
-    expires_at: new Date(Date.now() + expiresInSeconds * 1000).toISOString(),
-    metadata: input.metadata ?? {},
-    draft_contract_call: contractIntent,
-  });
-
-  await recordActivity(merchant.id as string, "invoice", invoice.id as string, "invoice.draft.created", {
-    invoiceKey,
-    kind: input.kind ?? "standard",
   });
 
   return {
-    invoice,
     merchant,
     contractIntent,
+    invoice: {
+      amount: input.amount,
+      currency: input.currency,
+      description: input.description,
+      customer_name: input.customerName ?? "",
+      customer_email: input.customerEmail ?? "",
+      recipient_address: recipientAddress,
+      expires_in_seconds: expiresInSeconds,
+    },
   };
 }
 
-export async function confirmInvoiceChain(input: ChainConfirmationInput) {
-  const rows = (await patchRows(
-    "invoices",
-    { id: input.id },
-    {
-      tx_id: input.txId,
-      onchain_invoice_id: input.onchainId ?? null,
-      status: input.status ?? "pending_chain",
-      metadata: input.failureReason
-        ? {
-            lastChainError: input.failureReason,
-          }
-        : undefined,
-    }
-  )) as Row[];
+export async function confirmInvoiceCreation(input: ConfirmInvoiceInput) {
+  ensurePositiveAmount(input.amount, "amount");
+  const walletAddress = ensureWalletAddress(input.walletAddress);
+  const merchant = await upsertMerchantProfile({
+    walletAddress,
+    settlementWallet: input.recipientAddress || walletAddress,
+  });
 
-  const invoice = rows[0] ?? null;
-  if (!invoice) {
-    throw new Error("Invoice not found.");
-  }
+  const confirmedAtMs =
+    typeof input.confirmedAt === "number" && input.confirmedAt > 0
+      ? input.confirmedAt * 1000
+      : Date.now();
+
+  const invoice = await upsertRow(
+    "invoices",
+    {
+      merchant_id: merchant.id,
+      onchain_invoice_id: input.onchainId,
+      tx_id: input.txId,
+      status: "pending",
+      amount: input.amount,
+      currency: input.currency,
+      description: input.description,
+      customer_name: input.customerName ?? "",
+      customer_email: input.customerEmail ?? "",
+      recipient_address: input.recipientAddress || walletAddress,
+      expires_at: new Date(confirmedAtMs + input.expiresInSeconds * 1000).toISOString(),
+    },
+    "onchain_invoice_id"
+  );
 
   await recordActivity(
-    invoice.merchant_id as string,
+    merchant.id as string,
     "invoice",
-    invoice.id as string,
-    "invoice.chain.submitted",
+    input.onchainId,
+    "invoice.created",
     {
-      onchainInvoiceId: input.onchainId ?? null,
-      status: input.status ?? "pending_chain",
-      failureReason: input.failureReason ?? null,
+      onchainInvoiceId: input.onchainId,
+      amount: input.amount,
+      currency: input.currency,
     },
     input.txId
   );

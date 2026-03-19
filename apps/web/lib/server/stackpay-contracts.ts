@@ -50,9 +50,6 @@ export function buildCreateInvoiceIntent(input: {
   currency: Currency;
   expiresInSeconds: number;
   description: string;
-  metadata: string;
-  email: string;
-  webhookUrl?: string | null;
 }): ContractIntent {
   return {
     contractId: getArchitectureContractId(),
@@ -65,13 +62,10 @@ export function buildCreateInvoiceIntent(input: {
       { type: "string-ascii", value: input.currency },
       { type: "uint", value: String(input.expiresInSeconds) },
       { type: "string-utf8", value: input.description },
-      { type: "string-utf8", value: input.metadata },
-      { type: "string-utf8", value: input.email },
-      { type: "optional-string-ascii", value: input.webhookUrl ?? null },
     ],
     notes: [
       "Merchant wallet submits this transaction.",
-      "Store the tx id, then reconcile onchain invoice id into Supabase after confirmation.",
+      "Persist the invoice in Supabase only after the chain confirms and returns the on-chain invoice id.",
     ],
   };
 }

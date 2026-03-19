@@ -1,8 +1,8 @@
 import { NextRequest } from "next/server";
 import { jsonError, jsonOk } from "@/lib/server/http";
 import {
-  createInvoiceDraft,
   listInvoicesForWallet,
+  prepareInvoiceCreation,
 } from "@/lib/server/stackpay-service";
 import { isSupabaseConfigured } from "@/lib/server/supabase-admin";
 
@@ -31,7 +31,7 @@ export async function POST(request: Request) {
 
   try {
     const payload = await request.json();
-    const result = await createInvoiceDraft(payload);
+    const result = await prepareInvoiceCreation(payload);
     return jsonOk(result, { status: 201 });
   } catch (error) {
     return jsonError(500, "invoice_create_failed", error instanceof Error ? error.message : "Unexpected error.");

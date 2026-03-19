@@ -83,8 +83,7 @@ export default function HostedPaymentPage({
   }
 
   const isRemoteOnly = !localInvoice && Boolean(remoteInvoice);
-  const disabled =
-    isRemoteOnly || (invoice.status !== "pending" && invoice.status !== "pending_chain");
+  const disabled = isRemoteOnly || invoice.status !== "pending";
 
   return (
     <main className="flex min-h-screen items-center px-6 py-12">
@@ -116,11 +115,7 @@ export default function HostedPaymentPage({
                       ? "Paid"
                       : invoice.status === "expired"
                         ? "Expired"
-                        : invoice.status === "draft"
-                          ? "Draft"
-                          : invoice.status === "pending_chain"
-                            ? "Awaiting payment"
-                            : "Pending"
+                        : "Pending"
                   }
                 />
               </div>
