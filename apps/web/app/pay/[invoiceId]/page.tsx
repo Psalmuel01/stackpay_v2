@@ -96,25 +96,30 @@ export default function HostedPaymentPage({
     let cancelled = false;
     setLoading(true);
 
-    fetch(`/api/invoices/${params.invoiceId}`, { cache: "no-store" })
-      .then(async (response) => {
-        if (!response.ok) {
-          return null;
+    void (async () => {
+      for (let attempt = 0; attempt < 10; attempt += 1) {
+        const response = await fetch(`/api/invoices/${params.invoiceId}`, { cache: "no-store" });
+
+        if (response.ok) {
+          const payload = await response.json();
+          if (!cancelled) {
+            setInvoice((payload.data ?? null) as RemoteInvoice | null);
+            setLoading(false);
+          }
+          return;
         }
 
-        const payload = await response.json();
-        return (payload.data ?? null) as RemoteInvoice | null;
-      })
-      .then((payload) => {
-        if (!cancelled) {
-          setInvoice(payload);
+        if (response.status !== 404 || attempt === 9) {
+          if (!cancelled) {
+            setInvoice(null);
+            setLoading(false);
+          }
+          return;
         }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      });
+
+        await new Promise((resolve) => window.setTimeout(resolve, 1500));
+      }
+    })();
 
     return () => {
       cancelled = true;
@@ -146,28 +151,28 @@ export default function HostedPaymentPage({
     const contractIntent: StackPayContractIntent =
       invoice.currency === "STX"
         ? {
-            contractId: getProcessorContractId(),
-            contractName: "processor",
-            functionName: "process-stx-payment",
-            network: process.env.NEXT_PUBLIC_STACKS_NETWORK ?? "testnet",
-            arguments: [
-              { type: "string-ascii", value: invoice.onchain_invoice_id },
-              { type: "uint", value: toAtomicAmount(Number(invoice.amount), invoice.currency) },
-            ],
-            notes: [],
-          }
+          contractId: getProcessorContractId(),
+          contractName: "processor",
+          functionName: "process-stx-payment",
+          network: process.env.NEXT_PUBLIC_STACKS_NETWORK ?? "testnet",
+          arguments: [
+            { type: "string-ascii", value: invoice.onchain_invoice_id },
+            { type: "uint", value: toAtomicAmount(Number(invoice.amount), invoice.currency) },
+          ],
+          notes: [],
+        }
         : {
-            contractId: getProcessorContractId(),
-            contractName: "processor",
-            functionName: "process-sip-010-payment",
-            network: process.env.NEXT_PUBLIC_STACKS_NETWORK ?? "testnet",
-            arguments: [
-              { type: "string-ascii", value: invoice.onchain_invoice_id },
-              { type: "uint", value: toAtomicAmount(Number(invoice.amount), invoice.currency) },
-              { type: "principal", value: getTokenContractId(invoice.currency) ?? "" },
-            ],
-            notes: [],
-          };
+          contractId: getProcessorContractId(),
+          contractName: "processor",
+          functionName: "process-sip-010-payment",
+          network: process.env.NEXT_PUBLIC_STACKS_NETWORK ?? "testnet",
+          arguments: [
+            { type: "string-ascii", value: invoice.onchain_invoice_id },
+            { type: "uint", value: toAtomicAmount(Number(invoice.amount), invoice.currency) },
+            { type: "principal", value: getTokenContractId(invoice.currency) ?? "" },
+          ],
+          notes: [],
+        };
 
     setSubmittingPayment(true);
     setPaymentError(null);
@@ -200,10 +205,10 @@ export default function HostedPaymentPage({
                 setInvoice((current) =>
                   current
                     ? {
-                        ...current,
-                        status: "paid",
-                        paid_at: new Date().toISOString(),
-                      }
+                      ...current,
+                      status: "paid",
+                      paid_at: new Date().toISOString(),
+                    }
                     : current
                 );
                 setPaymentReceiptId(payload.data?.sync?.receiptId ?? null);
@@ -346,19 +351,13 @@ export default function HostedPaymentPage({
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center justify-center gap-3 text-sm">
-              <Link
-                href="/dashboard"
-                className="rounded-full border border-white/10 bg-white/5 px-4 py-3 text-white/70"
-              >
-                Dashboard
-              </Link>
-              <Link
-                href="/invoices"
-                className="rounded-full border border-white/10 bg-white/5 px-4 py-3 text-white/70"
-              >
-                Invoices
-              </Link>
+            <div className="mt-6 flex flex-col items-center gap-3">
+              <div className="flex items-center gap-2 text-xs text-white/30">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-white/20">
+                  <path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622C17.176 19.29 21 14.591 21 9c0-1.042-.133-2.052-.382-3.016z" />
+                </svg>
+                Secured and verified by StackPay · 2026
+              </div>
             </div>
           </div>
         </GlassCard>

@@ -1,4 +1,4 @@
-import { jsonError, jsonOk } from "@/lib/server/http";
+import { jsonError, jsonOk, logTransactionResponse } from "@/lib/server/http";
 import { confirmInvoicePayment } from "@/lib/server/stackpay-service";
 import { isSupabaseConfigured } from "@/lib/server/supabase-admin";
 import { syncInvoiceCreationTx } from "@/lib/server/stacks-api";
@@ -18,6 +18,11 @@ export async function POST(
     }
 
     const sync = await syncInvoiceCreationTx(payload.txId);
+    logTransactionResponse("invoice.payment.sync", {
+      invoiceId: context.params.invoiceId,
+      txId: payload.txId,
+      sync,
+    });
 
     if (sync.status === "pending") {
       return jsonOk({
@@ -48,13 +53,15 @@ export async function POST(
       confirmedAt: sync.confirmedAt,
     });
 
-    return jsonOk({
+    const responsePayload = {
       invoice,
       sync: {
         status: "success",
         receiptId: sync.onchainId,
       },
-    });
+    };
+    logTransactionResponse("invoice.payment.response", responsePayload);
+    return jsonOk(responsePayload);
   } catch (error) {
     return jsonError(500, "invoice_payment_confirm_failed", error instanceof Error ? error.message : "Unexpected error.");
   }

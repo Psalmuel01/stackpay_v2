@@ -355,13 +355,6 @@ export default function PublicPaymentLinkPage({
               {submitting ? "Working..." : "Generate invoice"}
             </button>
             {error ? <div className="text-sm text-rose-300">{error}</div> : null}
-
-            <Link
-              href="/invoices"
-              className="flex w-full items-center justify-center rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm text-white/70"
-            >
-              View invoices
-            </Link>
           </div>
         </GlassCard>
       </div>

@@ -1,4 +1,4 @@
-import { jsonError, jsonOk } from "@/lib/server/http";
+import { jsonError, jsonOk, logTransactionResponse } from "@/lib/server/http";
 import { confirmPaymentLinkChain } from "@/lib/server/stackpay-service";
 import { isSupabaseConfigured } from "@/lib/server/supabase-admin";
 import { syncInvoiceCreationTx } from "@/lib/server/stacks-api";
@@ -17,6 +17,11 @@ export async function POST(
 
     if (!onchainLinkId && payload.txId) {
       const sync = await syncInvoiceCreationTx(payload.txId);
+      logTransactionResponse("payment-link.chain.sync", {
+        paymentLinkId: context.params.paymentLinkId,
+        txId: payload.txId,
+        sync,
+      });
       if (sync.status === "success" && sync.onchainId) {
         onchainLinkId = sync.onchainId;
       } else if (sync.status !== "pending") {
@@ -28,6 +33,10 @@ export async function POST(
       id: context.params.paymentLinkId,
       txId: payload.txId,
       onchainId: onchainLinkId,
+    });
+    logTransactionResponse("payment-link.chain.response", {
+      paymentLinkId: context.params.paymentLinkId,
+      paymentLink,
     });
     return jsonOk(paymentLink);
   } catch (error) {

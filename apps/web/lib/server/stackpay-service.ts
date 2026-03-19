@@ -60,6 +60,7 @@ type CreateUniversalQrInput = {
   slug?: string;
   title?: string;
   description?: string;
+  rotate?: boolean;
 };
 
 type ConfirmInvoiceInput = {
@@ -527,10 +528,20 @@ export async function getUniversalQrForWallet(walletAddress: string) {
     return null;
   }
 
-  return selectSingle<Row>("payment_links", {
+  const activeLink = await selectSingle<Row>("payment_links", {
     merchant_id: `eq.${merchant.id as string}`,
     is_universal: "eq.true",
     is_active: "eq.true",
+    order: "created_at.desc",
+  });
+
+  if (activeLink) {
+    return activeLink;
+  }
+
+  return selectSingle<Row>("payment_links", {
+    merchant_id: `eq.${merchant.id as string}`,
+    is_universal: "eq.true",
     order: "created_at.desc",
   });
 }
@@ -540,10 +551,36 @@ export async function createUniversalQrDraft(input: CreateUniversalQrInput) {
   const merchant = await getMerchantProfileByWallet(walletAddress);
   assertMerchantSetupReady(merchant);
   const ensuredMerchant = merchant as Row;
+  const existingUniversalLink = await getUniversalQrForWallet(walletAddress);
+
+  if (existingUniversalLink && !input.rotate) {
+    const restoredLink =
+      existingUniversalLink.is_active
+        ? existingUniversalLink
+        : await patchRows(
+            "payment_links",
+            { id: String(existingUniversalLink.id) },
+            { is_active: true }
+          ).then((rows) => (rows as Row[])[0] ?? existingUniversalLink);
+
+    return {
+      paymentLink: restoredLink,
+      merchant: ensuredMerchant,
+      contractIntent: existingUniversalLink.onchain_link_id
+        ? null
+        : (existingUniversalLink.draft_contract_call ?? null),
+      reusedExisting: true,
+    };
+  }
 
   const merchantName = merchantDisplayName(ensuredMerchant);
   const merchantSlug = String(ensuredMerchant.slug ?? merchantName);
-  const slug = slugify(input.slug || `${merchantSlug}-pay`);
+  const slug = slugify(
+    input.slug ||
+      (input.rotate
+        ? `${merchantSlug}-pay-${Date.now().toString(36).slice(-6)}`
+        : `${merchantSlug}-pay`)
+  );
   const title = input.title || `${merchantName} QR`;
   const description =
     input.description || "Permanent universal QR route for daily payments across supported assets.";
@@ -557,18 +594,6 @@ export async function createUniversalQrDraft(input: CreateUniversalQrInput) {
     description,
   });
   const linkKey = makeEntityKey("QR");
-
-  await patchRows(
-    "payment_links",
-    {
-      merchant_id: String(ensuredMerchant.id),
-      is_universal: "eq.true",
-      is_active: "eq.true",
-    },
-    {
-      is_active: false,
-    }
-  );
 
   const paymentLink = await insertRow("payment_links", {
     merchant_id: ensuredMerchant.id,
@@ -599,6 +624,7 @@ export async function createUniversalQrDraft(input: CreateUniversalQrInput) {
     paymentLink,
     merchant: ensuredMerchant,
     contractIntent,
+    reusedExisting: false,
   };
 }
 
@@ -732,7 +758,7 @@ export async function confirmInvoicePayment(input: ConfirmInvoicePaymentInput) {
       currency: updatedInvoice.currency,
       paid_at: paidAt,
     },
-    "onchain_receipt_id"
+    "receipt_key"
   );
 
   await recordActivity(

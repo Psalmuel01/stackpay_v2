@@ -78,6 +78,13 @@ export type StackPayContractIntent = {
   notes: string[];
 };
 
+function isPaymentFunction(functionName: string) {
+  return (
+    functionName === "process-stx-payment" ||
+    functionName === "process-sip-010-payment"
+  );
+}
+
 function toClarityValue(arg: ContractIntentArg): ClarityValue {
   switch (arg.type) {
     case "principal":
@@ -112,17 +119,32 @@ export async function submitContractIntent(
     throw new Error("Invalid contract id.");
   }
 
+  console.log("[stackpay:tx] submit.intent", intent);
+
   return openContractCall({
     userSession,
     network: intent.network === "mainnet" ? "mainnet" : "testnet",
     anchorMode: AnchorMode.Any,
-    postConditionMode: PostConditionMode.Deny,
+    postConditionMode: isPaymentFunction(intent.functionName)
+      ? PostConditionMode.Allow
+      : PostConditionMode.Deny,
     postConditions: [],
     contractAddress,
     contractName,
     functionName: intent.functionName,
     functionArgs: intent.arguments.map(toClarityValue),
-    onFinish: callbacks.onFinish,
-    onCancel: callbacks.onCancel,
+    onFinish: (data) => {
+      console.log("[stackpay:tx] wallet.finish", {
+        functionName: intent.functionName,
+        txId: data.txId,
+      });
+      callbacks.onFinish?.(data);
+    },
+    onCancel: () => {
+      console.log("[stackpay:tx] wallet.cancel", {
+        functionName: intent.functionName,
+      });
+      callbacks.onCancel?.();
+    },
   });
 }

@@ -111,6 +111,16 @@
   stacks-block-time
 )
 
+(define-private (authorized-processor-caller)
+  (or
+    (is-eq contract-caller .processor)
+    (match (var-get processor)
+      configured-processor (is-eq contract-caller configured-processor)
+      false
+    )
+  )
+)
+
 (define-private (valid-currency (currency (string-ascii 10)))
   (or
     (is-eq currency CURRENCY_STX)
@@ -417,8 +427,8 @@
     (payer principal)
     (amount uint)
   )
-  (let ((proc (unwrap! (var-get processor) ERR_UNAUTHORIZED)))
-    (asserts! (is-eq contract-caller proc) ERR_UNAUTHORIZED)
+  (begin
+    (asserts! (authorized-processor-caller) ERR_UNAUTHORIZED)
     (let (
         (invoice (unwrap! (map-get? invoices { invoice-id: invoice-id }) ERR_INVOICE_NOT_FOUND))
         (now (current-time))

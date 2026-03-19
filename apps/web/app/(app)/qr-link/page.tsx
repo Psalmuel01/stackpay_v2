@@ -21,6 +21,7 @@ type UniversalQrLink = {
   title: string;
   description: string;
   is_active: boolean;
+  onchain_link_id?: string | null;
 };
 
 function truncateAddress(address: string) {
@@ -130,7 +131,7 @@ export default function QrLinkPage() {
     window.setTimeout(() => setCopied(false), 1800);
   }
 
-  async function handleGenerate() {
+  async function handleGenerate(rotate = false) {
     if (!connectedAddress) {
       setError("Connect a wallet before generating a QR link.");
       return;
@@ -152,6 +153,7 @@ export default function QrLinkPage() {
         },
         body: JSON.stringify({
           walletAddress: connectedAddress,
+          rotate,
         }),
       });
 
@@ -160,7 +162,12 @@ export default function QrLinkPage() {
         throw new Error(payload?.error?.message ?? "Failed to generate QR link.");
       }
       const paymentLink = payload.data.paymentLink as UniversalQrLink;
-      const contractIntent = payload.data.contractIntent as StackPayContractIntent;
+      const contractIntent = payload.data.contractIntent as StackPayContractIntent | null;
+
+      if (!contractIntent) {
+        setUniversalLink(paymentLink);
+        return;
+      }
 
       await submitContractIntent(contractIntent, {
         onCancel: () => {
@@ -203,7 +210,7 @@ export default function QrLinkPage() {
         <GlassCard className="border border-white/20">
           <div className="mx-auto max-w-2xl text-center">
             <div className="text-[11px] uppercase tracking-[0.26em] text-white/40">Merchant setup required</div>
-            <div className="mt-3 text-3xl font-semibold text-white">Finish Settings before generating your QR</div>
+            <div className="mt-3 text-xl font-semibold">Finish Settings before generating your QR</div>
             <div className="mt-3 text-sm text-white/60">
               Add your business name or display name in Settings first. That merchant identity is what customers will see when they scan your QR code.
             </div>
@@ -226,7 +233,7 @@ export default function QrLinkPage() {
               This is a one-time setup for {merchantName}. Customers can pay with sBTC, STX, or USDCx from a single stable route.
             </div>
             <button
-              onClick={() => void handleGenerate()}
+              onClick={() => void handleGenerate(false)}
               disabled={submitting || loading}
               className="mt-5 rounded-full border border-white/20 bg-white px-6 py-3 text-sm font-semibold text-black disabled:opacity-60"
             >
@@ -249,7 +256,7 @@ export default function QrLinkPage() {
 
               <div className="mt-6 rounded-[32px] border border-white/10 bg-white/5 p-6">
                 <div className="mx-auto max-w-[420px]">
-                  <div className="rounded-[32px] bg-white p-6 shadow-[0_30px_80px_rgba(0,0,0,0.35)]">
+                  <div className="rounded-[32px] p-6 shadow-[0_30px_80px_rgba(0,0,0,0.35)]">
                     <QrPreview label={`stackpay.app/pay/link/${universalLink.slug}`} />
                   </div>
                 </div>
@@ -280,9 +287,19 @@ export default function QrLinkPage() {
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <div className="text-[11px] uppercase tracking-[0.26em] text-white/40">Status</div>
-                  <div className="mt-2 text-xl font-semibold text-white">Permanent route active</div>
+                  <div className="mt-2 text-xl font-semibold text-white">
+                    {universalLink.onchain_link_id ? "Permanent route active" : "Awaiting chain confirmation"}
+                  </div>
                 </div>
-                <StatusBadge label={universalLink.is_active ? "Live" : "Inactive"} />
+                <StatusBadge
+                  label={
+                    universalLink.onchain_link_id
+                      ? universalLink.is_active
+                        ? "Live"
+                        : "Inactive"
+                      : "Pending"
+                  }
+                />
               </div>
 
               <div className="mt-4 grid gap-3">
@@ -313,7 +330,7 @@ export default function QrLinkPage() {
                   Open hosted page
                 </Link>
                 <button
-                  onClick={() => void handleGenerate()}
+                  onClick={() => void handleGenerate(true)}
                   disabled={submitting}
                   className="rounded-full border border-white/20 bg-white px-5 py-3 text-xs font-semibold text-black disabled:opacity-60"
                 >

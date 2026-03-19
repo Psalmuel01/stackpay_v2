@@ -144,6 +144,10 @@ create table if not exists public.receipts (
   created_at timestamptz not null default timezone('utc', now())
 );
 
+create unique index if not exists receipts_onchain_receipt_id_key
+on public.receipts (onchain_receipt_id)
+where onchain_receipt_id is not null;
+
 create table if not exists public.webhook_endpoints (
   id uuid primary key default gen_random_uuid(),
   merchant_id uuid not null references public.merchant_profiles(id) on delete cascade,
