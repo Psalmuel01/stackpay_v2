@@ -32,14 +32,14 @@ export const invoiceTypes = [
     description: "One-time hosted invoice with fixed amount and expiration.",
   },
   {
+    id: "multipay",
+    label: "MultiPay",
+    description: "Reusable public payment route that can collect multiple payments over time.",
+  },
+  {
     id: "subscription",
     label: "Subscription",
     description: "Recurring plan that issues renewal invoices on a schedule.",
-  },
-  {
-    id: "donation",
-    label: "Donation",
-    description: "Reusable public payment surface with merchant-selected amounts.",
   },
 ];
 
@@ -62,7 +62,7 @@ export const mvpTracks = [
   {
     id: "merchant-onboarding",
     title: "Merchant onboarding",
-    outcome: "Merchant registers, connects wallet, configures webhook, and sets settlement wallet.",
+    outcome: "Merchant connects wallet, syncs profile metadata into Supabase, configures webhook, and sets settlement wallet.",
   },
   {
     id: "one-time-invoices",
@@ -82,7 +82,7 @@ export const mvpTracks = [
   {
     id: "developer-integrations",
     title: "Developer integrations",
-    outcome: "REST API, webhook delivery, and SDKs expose the same invoice and settlement lifecycle.",
+    outcome: "Next.js route handlers, webhook delivery, and SDKs expose the same invoice and settlement lifecycle.",
   },
 ];
 

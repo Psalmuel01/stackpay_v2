@@ -14,8 +14,15 @@
     "start": "npm run -w @stackpay/web start",
     "lint": "npm run lint:web",
     "lint:web": "npm run -w @stackpay/web lint",
+    "supabase:start": "npx supabase start",
+    "supabase:stop": "npx supabase stop",
+    "supabase:db:reset": "npx supabase db reset",
+    "supabase:db:push": "npx supabase db push",
     "dev:api": "npm run -w @stackpay/api dev",
     "start:api": "npm run -w @stackpay/api start",
     "test:contracts": "npm run -w @stackpay/contracts test"
+  },
+  "devDependencies": {
+    "supabase": "^2.81.3"
   }
 }

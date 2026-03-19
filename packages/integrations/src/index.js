@@ -22,12 +22,15 @@ export const integrationLayers = [
 ];
 
 export const apiResources = [
-  { method: "POST", path: "/v1/invoices", purpose: "Create invoice and hosted payment link." },
-  { method: "GET", path: "/v1/invoices", purpose: "List invoices for dashboard and explorer surfaces." },
-  { method: "POST", path: "/v1/subscriptions", purpose: "Create subscription plans and renewal policies." },
-  { method: "GET", path: "/v1/subscriptions", purpose: "List plans and subscriber states." },
-  { method: "GET", path: "/v1/settlements", purpose: "List pending and completed settlement runs." },
-  { method: "POST", path: "/v1/webhooks/test", purpose: "Validate webhook target configuration." },
+  { method: "POST", path: "/api/merchant/profile", purpose: "Upsert merchant profile metadata keyed to a wallet address." },
+  { method: "GET", path: "/api/invoices", purpose: "List invoices synced into Supabase for the connected merchant." },
+  { method: "POST", path: "/api/invoices", purpose: "Create an invoice draft in Supabase and return the contract intent." },
+  { method: "POST", path: "/api/invoices/:invoiceId/chain", purpose: "Attach tx id and on-chain invoice id after wallet submission." },
+  { method: "GET", path: "/api/payment-links", purpose: "List payment links and QR routes for the connected merchant." },
+  { method: "POST", path: "/api/payment-links", purpose: "Create a MultiPay or invoice payment-link draft plus contract intent." },
+  { method: "POST", path: "/api/payment-links/:paymentLinkId/chain", purpose: "Attach tx id and on-chain payment-link id after wallet submission." },
+  { method: "GET", path: "/api/qr-link", purpose: "Fetch the active universal QR record for a merchant wallet." },
+  { method: "POST", path: "/api/qr-link", purpose: "Create a universal QR draft in Supabase and return the contract intent." },
 ];
 
 export const webhookEvents = [
