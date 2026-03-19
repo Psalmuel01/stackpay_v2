@@ -4,14 +4,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import GlassCard from "@/components/GlassCard";
-import {
-  type Currency,
-  formatCurrencyAmount,
-  useDemo,
-} from "@/components/app/DemoProvider";
+import ConnectWalletButton from "@/components/app/ConnectWalletButton";
+import { type Currency, formatCurrencyAmount } from "@/components/app/DemoProvider";
+import { getConnectedWalletAddress, submitContractIntent, type StackPayContractIntent } from "@/lib/stacks";
 
 type RemotePaymentLink = {
-  kind: "invoice" | "multipay" | "subscription";
+  kind: "multipay";
   slug: string;
   title: string;
   description: string;
@@ -40,7 +38,7 @@ function defaultAmountConfig(currency: Currency) {
 
 function normalizeAmount(value: number, step: number, delta: number) {
   const next = value + step * delta;
-  return Math.max(step > 0 ? step : 0, Math.round(next * 1000) / 1000);
+  return Math.max(step > 0 ? step : 0.001, Math.round(next * 1000) / 1000);
 }
 
 function truncateAddress(address: string) {
@@ -53,18 +51,24 @@ export default function PublicPaymentLinkPage({
   params: { slug: string };
 }) {
   const router = useRouter();
-  const { state, actions } = useDemo();
   const [remoteLink, setRemoteLink] = useState<RemotePaymentLink | null>(null);
   const [loadingRemote, setLoadingRemote] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [connectedAddress, setConnectedAddress] = useState<string | null>(null);
+  const [selectedCurrency, setSelectedCurrency] = useState<Currency>("sBTC");
+  const [email, setEmail] = useState("");
+  const [amount, setAmount] = useState("");
 
-  const localLink = state.paymentLinks.find((item) => item.slug === params.slug && item.isActive);
-  const linkedPlan = state.plans.find((item) => item.id === localLink?.planId);
+  useEffect(() => {
+    setConnectedAddress(getConnectedWalletAddress());
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
     setLoadingRemote(true);
 
-    fetch(`/api/payment-links/public/${params.slug}`)
+    fetch(`/api/payment-links/public/${params.slug}`, { cache: "no-store" })
       .then(async (response) => {
         if (!response.ok) {
           return null;
@@ -88,146 +92,153 @@ export default function PublicPaymentLinkPage({
     };
   }, [params.slug]);
 
-  const link = localLink
-    ? {
-        source: "local" as const,
-        mode: localLink.mode,
-        title: localLink.title,
-        description: localLink.description,
-        acceptedCurrencies: localLink.acceptedCurrencies ?? [localLink.currency],
-        currency: localLink.currency,
-        defaultAmount: localLink.defaultAmount,
-        amountStep: localLink.amountStep,
-        allowCustomAmount: localLink.allowCustomAmount,
-        invoiceId: localLink.invoiceId,
-        slug: localLink.slug,
-        merchantName: state.merchant.businessName,
-        settlementWallet: state.merchant.settlementWallet,
-        isUniversal: localLink.isUniversal,
-      }
-    : remoteLink
-      ? {
-          source: "remote" as const,
-          mode: remoteLink.kind,
-          title: remoteLink.title,
-          description: remoteLink.description,
-          acceptedCurrencies: remoteLink.accepted_currencies ?? (remoteLink.default_currency ? [remoteLink.default_currency] : ["sBTC", "STX", "USDCx"]),
-          currency: remoteLink.default_currency ?? "sBTC",
-          defaultAmount: remoteLink.default_amount ?? null,
-          amountStep: remoteLink.amount_step ?? null,
-          allowCustomAmount: remoteLink.allow_custom_amount ?? true,
-          invoiceId: null,
-          slug: remoteLink.slug,
-          merchantName: remoteLink.merchant?.company_name || remoteLink.merchant?.display_name || "Merchant",
-          settlementWallet: remoteLink.merchant?.settlement_wallet || "",
-          isUniversal: remoteLink.is_universal ?? false,
-        }
-      : null;
-
-  const availableCurrencies = link?.acceptedCurrencies ?? [];
-  const [selectedCurrency, setSelectedCurrency] = useState<Currency>("sBTC");
-  const [email, setEmail] = useState("");
-  const [customer, setCustomer] = useState("");
-  const [seats, setSeats] = useState("");
-  const [amount, setAmount] = useState("");
+  const availableCurrencies = remoteLink?.accepted_currencies ?? [];
 
   useEffect(() => {
-    if (!link) {
-      setSelectedCurrency("sBTC");
-      setAmount("");
+    if (!remoteLink) {
       return;
     }
 
-    const initialCurrency = (availableCurrencies[0] ?? link.currency ?? "sBTC") as Currency;
+    const initialCurrency = (availableCurrencies[0] ?? remoteLink.default_currency ?? "sBTC") as Currency;
     const defaults = defaultAmountConfig(initialCurrency);
     setSelectedCurrency(initialCurrency);
-    setAmount(String(link.defaultAmount ?? defaults.defaultAmount));
-  }, [link?.slug]);
+    setAmount(String(remoteLink.default_amount ?? defaults.defaultAmount));
+  }, [availableCurrencies, remoteLink]);
 
-  const amountStep = link?.amountStep ?? defaultAmountConfig(selectedCurrency).amountStep;
+  const amountStep = remoteLink?.amount_step ?? defaultAmountConfig(selectedCurrency).amountStep;
+  const merchantName =
+    remoteLink?.merchant?.company_name ||
+    remoteLink?.merchant?.display_name ||
+    "Merchant";
 
   const pageSummary = useMemo(() => {
-    if (!link) {
+    if (!remoteLink) {
       return "";
     }
-    if (link.mode === "invoice") {
-      return "Open the fixed invoice and continue directly into hosted checkout.";
-    }
-    if (link.mode === "subscription") {
-      return "Capture a company name and billing email, then create the subscriber record for the selected plan.";
-    }
-    if (link.source === "remote") {
-      return link.isUniversal
-        ? "Permanent universal payment route. Customers can choose the asset and amount here."
-        : "Public MultiPay route.";
-    }
-    return link.description || "Choose an asset, adjust the amount, generate a fresh invoice, and continue into hosted checkout.";
-  }, [link]);
 
-  if (!link) {
+    return remoteLink.is_universal
+      ? "Enter any amount, choose an asset, and pay from the same permanent route."
+      : "Choose an amount, generate a fresh invoice, and continue into hosted checkout.";
+  }, [remoteLink]);
+
+  function adjustAmount(delta: number) {
+    const base = Number(amount || remoteLink?.default_amount || defaultAmountConfig(selectedCurrency).defaultAmount || 0);
+    setAmount(String(normalizeAmount(base, amountStep, delta)));
+  }
+
+  async function handleContinue() {
+    if (!remoteLink) {
+      return;
+    }
+
+    if (!connectedAddress) {
+      setError("Connect a wallet before generating an invoice.");
+      return;
+    }
+
+    const numericAmount = Number(amount || 0);
+    if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+      setError("Enter a valid amount.");
+      return;
+    }
+
+    setSubmitting(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/payment-links/public/${params.slug}/invoices`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          amount: numericAmount,
+          currency: selectedCurrency,
+          customerEmail: email,
+          expiresInSeconds: 24 * 60 * 60,
+        }),
+      });
+
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload?.error?.message ?? "Failed to prepare payment.");
+      }
+
+      const preparedInvoice = payload.data.invoice;
+      const contractIntent = payload.data.contractIntent as StackPayContractIntent;
+
+      await submitContractIntent(contractIntent, {
+        onCancel: () => {
+          setError("Contract call was canceled.");
+        },
+        onFinish: async ({ txId }) => {
+          try {
+            for (let attempt = 0; attempt < 20; attempt += 1) {
+              const confirmResponse = await fetch(
+                `/api/payment-links/public/${params.slug}/invoices/confirm`,
+                {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    txId,
+                    amount: preparedInvoice.amount,
+                    currency: preparedInvoice.currency,
+                    customerEmail: preparedInvoice.customer_email,
+                    expiresInSeconds: preparedInvoice.expires_in_seconds,
+                  }),
+                }
+              );
+
+              const confirmPayload = await confirmResponse.json();
+              if (!confirmResponse.ok) {
+                throw new Error(confirmPayload?.error?.message ?? "Failed to confirm invoice.");
+              }
+
+              if (confirmPayload.data?.sync?.status === "success" && confirmPayload.data?.sync?.onchainInvoiceId) {
+                router.push(`/pay/${confirmPayload.data.sync.onchainInvoiceId}`);
+                return;
+              }
+
+              if (
+                confirmPayload.data?.sync?.status === "failed" ||
+                confirmPayload.data?.sync?.status === "abort_by_response" ||
+                confirmPayload.data?.sync?.status === "abort_by_post_condition"
+              ) {
+                throw new Error(confirmPayload.data?.sync?.result ?? "Failed to create invoice.");
+              }
+
+              await new Promise((resolve) => window.setTimeout(resolve, 3000));
+            }
+
+            throw new Error("Invoice confirmation timed out.");
+          } catch (syncError) {
+            setError(syncError instanceof Error ? syncError.message : "Failed to confirm invoice.");
+          } finally {
+            setSubmitting(false);
+          }
+        },
+      });
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Failed to create invoice.");
+      setSubmitting(false);
+    }
+  }
+
+  if (!remoteLink) {
     return (
       <main className="flex min-h-screen items-center px-6 py-12">
         <div className="mx-auto w-full max-w-3xl">
           <GlassCard>
             <div className="text-3xl font-semibold text-white">Payment link not found</div>
             <div className="mt-3 text-sm text-white/60">
-              {loadingRemote
-                ? "Looking up the public route."
-                : "This public payment route could not be found."}
+              {loadingRemote ? "Looking up the public route." : "This public payment route could not be found."}
             </div>
           </GlassCard>
         </div>
       </main>
     );
-  }
-
-  function adjustAmount(delta: number) {
-    if (!link) {
-      return;
-    }
-
-    const defaults = defaultAmountConfig(selectedCurrency);
-    const base = Number(amount || link.defaultAmount || defaults.defaultAmount || 0);
-    setAmount(String(normalizeAmount(base, amountStep, delta)));
-  }
-
-  function handleContinue() {
-    if (!link) {
-      return;
-    }
-
-    if (link.mode === "invoice" && link.invoiceId) {
-      router.push(`/pay/${link.invoiceId}`);
-      return;
-    }
-
-    if (link.source === "remote") {
-      return;
-    }
-
-    if (link.mode === "subscription") {
-      const subscription = actions.enrollFromLink({
-        slug: link.slug,
-        customer,
-        email,
-        seats: Number(seats || 1),
-      });
-      if (subscription) {
-        router.push("/subscriptions");
-      }
-      return;
-    }
-
-    const invoice = actions.createInvoiceFromLink({
-      slug: link.slug,
-      customer: "MultiPay customer",
-      email,
-      amount: Number(amount || 0),
-      currency: selectedCurrency,
-    });
-    if (invoice) {
-      router.push(`/pay/${invoice.id}`);
-    }
   }
 
   return (
@@ -236,33 +247,28 @@ export default function PublicPaymentLinkPage({
         <div className="space-y-6">
           <div>
             <div className="text-xs uppercase tracking-[0.35em] text-white/40">
-              {link.isUniversal ? "Hosted universal QR route" : "Hosted payment route"}
+              {remoteLink.is_universal ? "Universal payment route" : "MultiPay route"}
             </div>
-            <h1 className="mt-3 text-4xl font-semibold text-white">{link.title}</h1>
+            <h1 className="mt-3 text-4xl font-semibold text-white">{remoteLink.title}</h1>
             <p className="mt-3 max-w-2xl text-sm text-white/60">{pageSummary}</p>
           </div>
 
           <GlassCard className="border border-white/20">
             <div className="grid gap-3">
               <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/75">
-                Merchant: {link.merchantName}
+                Merchant: {merchantName}
               </div>
               <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/75">
                 Assets: {availableCurrencies.join(", ")}
               </div>
-              {link.settlementWallet ? (
+              {remoteLink.merchant?.settlement_wallet ? (
                 <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/75">
-                  Settlement wallet: {truncateAddress(link.settlementWallet)}
+                  Settlement wallet: {truncateAddress(remoteLink.merchant.settlement_wallet)}
                 </div>
               ) : null}
-              {linkedPlan ? (
+              {remoteLink.description ? (
                 <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/75">
-                  Plan: {linkedPlan.name} · {formatCurrencyAmount(linkedPlan.amount, linkedPlan.currency)}
-                </div>
-              ) : null}
-              {link.description ? (
-                <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/75">
-                  {link.description}
+                  {remoteLink.description}
                 </div>
               ) : null}
             </div>
@@ -271,124 +277,90 @@ export default function PublicPaymentLinkPage({
 
         <GlassCard className="border border-white/20">
           <div className="text-[11px] uppercase tracking-[0.26em] text-white/40">Checkout</div>
-          <div className="mt-2 text-2xl font-semibold text-white">
-            {link.mode === "subscription" ? "Start subscription" : "Complete payment"}
+          <div className="mt-2 text-2xl font-semibold text-white">Generate invoice</div>
+
+          <div className="mt-4 text-sm text-white/60">
+            {connectedAddress ? `Connected wallet ${connectedAddress}` : "Connect a Stacks wallet to continue."}
+          </div>
+          <div className="mt-4">
+            <ConnectWalletButton />
           </div>
 
           <div className="mt-6 space-y-3">
-            {link.mode === "multipay" ? (
-              <>
-                {availableCurrencies.length > 1 ? (
-                  <div>
-                    <div className="text-[11px] uppercase tracking-[0.22em] text-white/40">Pay with</div>
-                    <div className="mt-3 grid grid-cols-3 gap-2">
-                      {availableCurrencies.map((item) => (
-                        <button
-                          key={item}
-                          onClick={() => {
-                            setSelectedCurrency(item);
-                            setAmount(String(defaultAmountConfig(item).defaultAmount));
-                          }}
-                          className={`rounded-full px-4 py-3 text-sm transition ${
-                            selectedCurrency === item
-                              ? "border border-white/20 bg-white text-black"
-                              : "border border-white/10 bg-white/5 text-white/70"
-                          }`}
-                        >
-                          {item}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-                <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
-                  <div className="text-[11px] uppercase tracking-[0.22em] text-white/40">Amount</div>
-                  <div className="mt-3 flex items-center gap-3">
+            {availableCurrencies.length > 1 ? (
+              <div>
+                <div className="text-[11px] uppercase tracking-[0.22em] text-white/40">Pay with</div>
+                <div className="mt-3 grid grid-cols-3 gap-2">
+                  {availableCurrencies.map((item) => (
                     <button
-                      onClick={() => adjustAmount(-1)}
-                      className="h-12 w-12 rounded-full border border-white/10 bg-black/20 text-xl text-white/75"
+                      key={item}
+                      onClick={() => {
+                        setSelectedCurrency(item);
+                        setAmount(String(remoteLink.default_amount ?? defaultAmountConfig(item).defaultAmount));
+                      }}
+                      className={`rounded-full px-4 py-3 text-sm transition ${
+                        selectedCurrency === item
+                          ? "border border-white/20 bg-white text-black"
+                          : "border border-white/10 bg-white/5 text-white/70"
+                      }`}
                     >
-                      -
+                      {item}
                     </button>
-                    <div className="flex-1 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-center text-lg font-semibold text-white">
-                      {amount ? formatCurrencyAmount(Number(amount), selectedCurrency) : `0 ${selectedCurrency}`}
-                    </div>
-                    <button
-                      onClick={() => adjustAmount(1)}
-                      className="h-12 w-12 rounded-full border border-white/10 bg-black/20 text-xl text-white/75"
-                    >
-                      +
-                    </button>
-                  </div>
-                  {link.allowCustomAmount ? (
-                    <input
-                      className="mt-3 w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white/75 outline-none"
-                      value={amount}
-                      onChange={(event) => setAmount(event.target.value)}
-                      placeholder={`Enter amount in ${selectedCurrency}`}
-                    />
-                  ) : null}
+                  ))}
                 </div>
-
-                <input
-                  className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/75 outline-none"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  placeholder="Receipt email (optional)"
-                />
-              </>
-            ) : null}
-
-            {link.mode === "subscription" ? (
-              <>
-                <input
-                  className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/75 outline-none"
-                  value={customer}
-                  onChange={(event) => setCustomer(event.target.value)}
-                  placeholder="Company or team name"
-                />
-                <div className="grid gap-3 md:grid-cols-[1fr_140px]">
-                  <input
-                    className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/75 outline-none"
-                    value={email}
-                    onChange={(event) => setEmail(event.target.value)}
-                    placeholder="Billing email"
-                  />
-                  <input
-                    className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/75 outline-none"
-                    value={seats}
-                    onChange={(event) => setSeats(event.target.value)}
-                    placeholder="1"
-                  />
-                </div>
-              </>
-            ) : null}
-
-            {link.source === "remote" ? (
-              <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-sm text-white/70">
-                This public route is live and correctly branded, but automated invoice generation from remote public payment links is the next integration step.
               </div>
             ) : null}
 
+            <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
+              <div className="text-[11px] uppercase tracking-[0.22em] text-white/40">Amount</div>
+              <div className="mt-3 flex items-center gap-3">
+                <button
+                  onClick={() => adjustAmount(-1)}
+                  className="h-12 w-12 rounded-full border border-white/10 bg-black/20 text-xl text-white/75"
+                >
+                  -
+                </button>
+                <div className="flex-1 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-center text-lg font-semibold text-white">
+                  {amount ? formatCurrencyAmount(Number(amount), selectedCurrency) : `0 ${selectedCurrency}`}
+                </div>
+                <button
+                  onClick={() => adjustAmount(1)}
+                  className="h-12 w-12 rounded-full border border-white/10 bg-black/20 text-xl text-white/75"
+                >
+                  +
+                </button>
+              </div>
+              {remoteLink.allow_custom_amount ? (
+                <input
+                  className="mt-3 w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white/75 outline-none"
+                  value={amount}
+                  onChange={(event) => setAmount(event.target.value)}
+                  placeholder={`Enter amount in ${selectedCurrency}`}
+                />
+              ) : null}
+            </div>
+
+            <input
+              className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/75 outline-none"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="Receipt email (optional)"
+            />
+
             <button
-              onClick={handleContinue}
-              disabled={link.source === "remote"}
+              onClick={() => void handleContinue()}
+              disabled={submitting}
               className="w-full rounded-full border border-white/20 bg-white px-5 py-3 text-sm font-semibold text-black disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {link.mode === "subscription"
-                ? "Start subscription"
-                : link.mode === "multipay"
-                  ? link.source === "remote"
-                    ? "Public payment generation coming next"
-                    : "Generate invoice"
-                  : "Open invoice"}
+              {submitting ? "Working..." : "Generate invoice"}
             </button>
+            {error ? <div className="text-sm text-rose-300">{error}</div> : null}
 
             <Link
               href="/invoices"
               className="flex w-full items-center justify-center rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm text-white/70"
             >
-              View merchant records
+              View invoices
             </Link>
           </div>
         </GlassCard>

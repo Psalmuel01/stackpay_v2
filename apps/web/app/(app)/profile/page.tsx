@@ -270,7 +270,7 @@ export default function ProfilePage() {
           </GlassCard>
 
           <GlassCard>
-            <div className="mb-4 text-sm uppercase tracking-[0.3em] text-white/40">Readiness</div>
+            {/* <div className="mb-4 text-sm uppercase tracking-[0.3em] text-white/40">Readiness</div> */}
             <div className="grid gap-3">
               <div className="rounded-[20px] border border-white/10 bg-white/5 px-4 py-3">
                 <div className="text-[11px] uppercase tracking-[0.22em] text-white/35">Merchant name</div>

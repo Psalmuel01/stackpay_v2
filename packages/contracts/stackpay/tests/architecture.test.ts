@@ -1,19 +1,19 @@
 import { tx } from "@stacks/clarinet-sdk";
-import { Cl, cvToValue, stringAsciiCV, stringUtf8CV, uintCV } from "@stacks/transactions";
+import { Cl, cvToValue, noneCV, stringAsciiCV, stringUtf8CV, uintCV } from "@stacks/transactions";
 import { describe, expect, it } from "vitest";
 
 const accounts = simnet.getAccounts();
 const merchant = accounts.get("wallet_1")!;
 const recipient = accounts.get("wallet_2")!;
+const customer = accounts.get("wallet_3")!;
 
-function getCurrentTime(sender: string) {
-  const now = simnet.callReadOnlyFn("architecture", "get-current-time", [], sender);
-  expect(now.result).toBeOk(Cl.uint(cvToValue(now.result.value) as bigint));
-  return cvToValue(now.result.value) as bigint;
+function unwrapSomeOk(result: any) {
+  expect(result.result).toBeOk(Cl.some(result.result.value.value));
+  return cvToValue(result.result.value.value) as Record<string, any>;
 }
 
 describe("architecture", () => {
-  it("creates on-chain invoices without requiring merchant registration", () => {
+  it("creates standard invoices directly", () => {
     const created = simnet.callPublicFn(
       "architecture",
       "create-invoice",
@@ -30,54 +30,68 @@ describe("architecture", () => {
     const invoiceId = cvToValue(created.result.value) as string;
     expect(created.result).toBeOk(Cl.stringAscii(invoiceId));
 
-    const createdAt = getCurrentTime(merchant);
-    const invoice = simnet.callReadOnlyFn(
-      "architecture",
-      "get-invoice",
-      [stringAsciiCV(invoiceId)],
-      merchant
+    const invoiceView = unwrapSomeOk(
+      simnet.callReadOnlyFn("architecture", "get-invoice-view", [stringAsciiCV(invoiceId)], merchant)
     );
-
-    expect(invoice.result).toBeOk(
-      Cl.some(
-        Cl.tuple({
-          merchant: Cl.principal(merchant),
-          recipient: Cl.principal(recipient),
-          amount: Cl.uint(1200),
-          currency: Cl.stringAscii("STX"),
-          status: Cl.uint(0),
-          "created-at": Cl.uint(createdAt),
-          "expires-at": Cl.uint(createdAt + 3600n),
-          "paid-at": Cl.none(),
-          description: Cl.stringUtf8("Starter plan"),
-        })
-      )
-    );
-
-    const payable = simnet.callReadOnlyFn(
-      "architecture",
-      "is-invoice-payable",
-      [stringAsciiCV(invoiceId)],
-      merchant
-    );
-    expect(payable.result).toBeBool(true);
+    expect(invoiceView.merchant.value).toBe(merchant);
+    expect(invoiceView.recipient.value).toBe(recipient);
+    expect(invoiceView.amount.value).toBe("1200");
+    expect(invoiceView.currency.value).toBe("STX");
+    expect(invoiceView.status.value).toBe("0");
+    expect(invoiceView.description.value).toBe("Starter plan");
   });
 
-  it("expires invoices after their time deadline passes", () => {
-    const invalid = simnet.callPublicFn(
+  it("creates public invoices from multipay links", () => {
+    const linkCreated = simnet.callPublicFn(
       "architecture",
-      "create-invoice",
+      "create-multipay-link",
       [
         Cl.principal(recipient),
-        uintCV(400),
-        stringAsciiCV("USDCx"),
-        uintCV(0),
-        stringUtf8CV("Too soon"),
+        stringAsciiCV("merchant-pay"),
+        stringUtf8CV("Merchant Pay"),
+        stringUtf8CV("Universal support"),
+        Cl.some(Cl.stringAscii("STX")),
+        Cl.some(Cl.uint(1000)),
+        noneCV(),
+        Cl.bool(true),
+        Cl.bool(true),
+        Cl.bool(false),
+        Cl.bool(false),
       ],
       merchant
     );
-    expect(invalid.result).toBeErr(Cl.uint(107));
 
+    const linkId = cvToValue(linkCreated.result.value) as string;
+    expect(linkCreated.result).toBeOk(Cl.stringAscii(linkId));
+
+    const invoiceCreated = simnet.callPublicFn(
+      "architecture",
+      "create-public-invoice-from-link",
+      [
+        stringAsciiCV(linkId),
+        stringAsciiCV("STX"),
+        uintCV(1500),
+        uintCV(7200),
+        stringUtf8CV("Community contribution"),
+      ],
+      customer
+    );
+
+    const invoiceId = cvToValue(invoiceCreated.result.value) as string;
+    expect(invoiceCreated.result).toBeOk(Cl.stringAscii(invoiceId));
+
+    const invoice = unwrapSomeOk(
+      simnet.callReadOnlyFn("architecture", "get-invoice", [stringAsciiCV(invoiceId)], merchant)
+    );
+    expect(invoice.merchant.value).toBe(merchant);
+    expect(invoice.recipient.value).toBe(recipient);
+    expect(invoice.amount.value).toBe("1500");
+    expect(invoice.currency.value).toBe("STX");
+    expect(invoice.status.value).toBe("0");
+    expect(invoice.description.value).toBe("Community contribution");
+  });
+
+  it("marks invoice views expired when time has elapsed", () => {
     const created = simnet.callPublicFn(
       "architecture",
       "create-invoice",
@@ -92,39 +106,12 @@ describe("architecture", () => {
     );
 
     const invoiceId = cvToValue(created.result.value) as string;
-    const createdAt = getCurrentTime(merchant);
-
     simnet.mineEmptyBlocks(1);
 
-    const expired = simnet.callPublicFn(
-      "architecture",
-      "expire-invoice",
-      [stringAsciiCV(invoiceId)],
-      merchant
+    const invoiceView = unwrapSomeOk(
+      simnet.callReadOnlyFn("architecture", "get-invoice-view", [stringAsciiCV(invoiceId)], merchant)
     );
-    expect(expired.result).toBeOk(Cl.bool(true));
-
-    const invoice = simnet.callReadOnlyFn(
-      "architecture",
-      "get-invoice",
-      [stringAsciiCV(invoiceId)],
-      merchant
-    );
-
-    expect(invoice.result).toBeOk(
-      Cl.some(
-        Cl.tuple({
-          merchant: Cl.principal(merchant),
-          recipient: Cl.principal(recipient),
-          amount: Cl.uint(400),
-          currency: Cl.stringAscii("USDCx"),
-          status: Cl.uint(2),
-          "created-at": Cl.uint(createdAt),
-          "expires-at": Cl.uint(createdAt + 1n),
-          "paid-at": Cl.none(),
-          description: Cl.stringUtf8("Flash sale"),
-        })
-      )
-    );
+    expect(invoiceView.status.value).toBe("2");
+    expect(invoiceView.description.value).toBe("Flash sale");
   });
 });

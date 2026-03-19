@@ -6,7 +6,7 @@ import GlassCard from "@/components/GlassCard";
 import PageHeader from "@/components/app/PageHeader";
 import QrPreview from "@/components/app/QrPreview";
 import StatusBadge from "@/components/app/StatusBadge";
-import { getConnectedWalletAddress } from "@/lib/stacks";
+import { getConnectedWalletAddress, submitContractIntent, type StackPayContractIntent } from "@/lib/stacks";
 
 type MerchantProfile = {
   company_name?: string;
@@ -95,6 +95,31 @@ export default function QrLinkPage() {
   const ready = Boolean(connectedAddress && merchantName);
   const hostedHref = universalLink ? `/pay/link/${universalLink.slug}` : "";
 
+  async function confirmPaymentLinkFromChain(paymentLinkId: string, txId: string) {
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const response = await fetch(`/api/payment-links/${paymentLinkId}/chain`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ txId }),
+      });
+
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload?.error?.message ?? "Failed to confirm QR transaction.");
+      }
+
+      if (payload.data?.onchain_link_id) {
+        return payload.data as UniversalQrLink;
+      }
+
+      await new Promise((resolve) => window.setTimeout(resolve, 3000));
+    }
+
+    return null;
+  }
+
   async function handleCopy() {
     if (!hostedHref) {
       return;
@@ -134,8 +159,22 @@ export default function QrLinkPage() {
       if (!response.ok) {
         throw new Error(payload?.error?.message ?? "Failed to generate QR link.");
       }
+      const paymentLink = payload.data.paymentLink as UniversalQrLink;
+      const contractIntent = payload.data.contractIntent as StackPayContractIntent;
 
-      setUniversalLink(payload.data.paymentLink as UniversalQrLink);
+      await submitContractIntent(contractIntent, {
+        onCancel: () => {
+          setError("Contract call was canceled.");
+        },
+        onFinish: async ({ txId }) => {
+          try {
+            const chainLink = await confirmPaymentLinkFromChain(paymentLink.id, txId);
+            setUniversalLink(chainLink ?? paymentLink);
+          } catch (syncError) {
+            setError(syncError instanceof Error ? syncError.message : "Failed to confirm QR link.");
+          }
+        },
+      });
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Failed to generate QR link.");
     } finally {
@@ -154,7 +193,7 @@ export default function QrLinkPage() {
         <GlassCard className="border border-white/20">
           <div className="mx-auto max-w-2xl text-center">
             <div className="text-[11px] uppercase tracking-[0.26em] text-white/40">Universal QR</div>
-            <div className="mt-3 text-3xl font-semibold text-white">Connect a wallet to continue</div>
+            <div className="mt-3 text-lg">Connect a wallet to continue</div>
             <div className="mt-3 text-sm text-white/60">
               StackPay needs your connected merchant wallet before it can load or generate your permanent QR route.
             </div>
@@ -230,7 +269,7 @@ export default function QrLinkPage() {
                 </div>
 
                 <div className="mt-4 text-center text-sm text-white/45">
-                  Payments sent here can use sBTC, STX, or USDCx and should appear through standard invoice and receipt tracking once payment integration is wired end to end.
+                  Payments sent here can use sBTC, STX, or USDCx from one permanent route.
                 </div>
               </div>
             </div>

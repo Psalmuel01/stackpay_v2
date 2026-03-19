@@ -1,8 +1,9 @@
 ;; StackPay Architecture
 ;; Compact MVP surface for:
 ;; - merchant-created invoices
+;; - public multipay / universal QR links
 ;; - processor-gated payment settlement
-;; - hosted invoice lookup by on-chain invoice id
+;; - read-only invoice and link views
 
 (define-trait invoice-trait (
   (get-invoice
@@ -33,6 +34,7 @@
 (define-constant ERR_INVALID_AMOUNT (err u105))
 (define-constant ERR_INVALID_INPUT (err u107))
 (define-constant ERR_INVALID_PRINCIPAL (err u109))
+(define-constant ERR_LINK_NOT_FOUND (err u111))
 
 (define-constant STATUS_PENDING u0)
 (define-constant STATUS_PAID u1)
@@ -42,12 +44,17 @@
 (define-constant CURRENCY_SBTC "sBTC")
 (define-constant CURRENCY_USDC "USDCx")
 
+(define-constant LINK_KIND_MULTIPAY u1)
+(define-constant LINK_KIND_UNIVERSAL u2)
+
 (define-data-var owner principal tx-sender)
 (define-data-var processor (optional principal) none)
 (define-data-var invoice-ctr uint u0)
 (define-data-var receipt-ctr uint u0)
+(define-data-var payment-link-ctr uint u0)
 (define-data-var invoice-total uint u0)
 (define-data-var receipt-total uint u0)
+(define-data-var payment-link-total uint u0)
 
 (define-map invoices
   { invoice-id: (string-ascii 85) }
@@ -70,9 +77,34 @@
     invoice-id: (string-ascii 85),
     payer: principal,
     amount-paid: uint,
-    tx-id: (buff 32),
     timestamp: uint,
   }
+)
+
+(define-map payment-links
+  { link-id: (string-ascii 85) }
+  {
+    merchant: principal,
+    recipient: principal,
+    slug: (string-ascii 64),
+    kind: uint,
+    title: (string-utf8 128),
+    description: (string-utf8 256),
+    default-currency: (optional (string-ascii 10)),
+    default-amount: (optional uint),
+    amount-step: (optional uint),
+    allow-custom-amount: bool,
+    accepts-stx: bool,
+    accepts-sbtc: bool,
+    accepts-usdcx: bool,
+    is-active: bool,
+    created-at: uint,
+  }
+)
+
+(define-map payment-link-slugs
+  { slug: (string-ascii 64) }
+  { link-id: (string-ascii 85) }
 )
 
 (define-private (current-time)
@@ -91,6 +123,42 @@
     (not (is-eq who 'SP000000000000000000002Q6VF78))
     (not (is-eq who 'ST000000000000000000002AMW42H))
     true
+  )
+)
+
+(define-private (currency-enabled
+    (currency (string-ascii 10))
+    (accepts-stx bool)
+    (accepts-sbtc bool)
+    (accepts-usdcx bool)
+  )
+  (if (is-eq currency CURRENCY_STX)
+    accepts-stx
+    (if (is-eq currency CURRENCY_SBTC)
+      accepts-sbtc
+      (if (is-eq currency CURRENCY_USDC) accepts-usdcx false)
+    )
+  )
+)
+
+(define-private (effective-status (invoice {
+    merchant: principal,
+    recipient: principal,
+    amount: uint,
+    currency: (string-ascii 10),
+    status: uint,
+    created-at: uint,
+    expires-at: uint,
+    paid-at: (optional uint),
+    description: (string-utf8 256),
+  }))
+  (if
+    (and
+      (is-eq (get status invoice) STATUS_PENDING)
+      (>= (current-time) (get expires-at invoice))
+    )
+    STATUS_EXPIRED
+    (get status invoice)
   )
 )
 
@@ -120,6 +188,55 @@
   )
 )
 
+(define-private (new-payment-link-id)
+  (let (
+      (counter (var-get payment-link-ctr))
+      (timestamp (current-time))
+    )
+    (var-set payment-link-ctr (+ counter u1))
+    (concat
+      (concat "LNK_" (int-to-ascii timestamp))
+      (concat "_" (int-to-ascii counter))
+    )
+  )
+)
+
+(define-private (store-invoice
+    (merchant principal)
+    (recipient principal)
+    (amount uint)
+    (currency (string-ascii 10))
+    (expires-in-seconds uint)
+    (description (string-utf8 256))
+  )
+  (let (
+      (invoice-id (new-invoice-id))
+      (now (current-time))
+    )
+    (map-set invoices { invoice-id: invoice-id } {
+      merchant: merchant,
+      recipient: recipient,
+      amount: amount,
+      currency: currency,
+      status: STATUS_PENDING,
+      created-at: now,
+      expires-at: (+ now expires-in-seconds),
+      paid-at: none,
+      description: description,
+    })
+    (var-set invoice-total (+ (var-get invoice-total) u1))
+    (print {
+      event: "invoice-created",
+      invoice-id: invoice-id,
+      merchant: merchant,
+      recipient: recipient,
+      amount: amount,
+      currency: currency,
+    })
+    invoice-id
+  )
+)
+
 (define-public (set-processor (who principal))
   (begin
     (asserts! (is-eq tx-sender (var-get owner)) ERR_UNAUTHORIZED)
@@ -135,35 +252,163 @@
     (expires-in-seconds uint)
     (description (string-utf8 256))
   )
-  (let (
-      (invoice-id (new-invoice-id))
-      (now (current-time))
-    )
+  (begin
     (asserts! (valid-principal recipient) ERR_INVALID_PRINCIPAL)
     (asserts! (> amount u0) ERR_INVALID_AMOUNT)
     (asserts! (valid-currency currency) ERR_INVALID_INPUT)
     (asserts! (> expires-in-seconds u0) ERR_INVALID_INPUT)
-    (map-set invoices { invoice-id: invoice-id } {
+    (ok (store-invoice tx-sender recipient amount currency expires-in-seconds description))
+  )
+)
+
+(define-public (create-multipay-link
+    (recipient principal)
+    (slug (string-ascii 64))
+    (title (string-utf8 128))
+    (description (string-utf8 256))
+    (default-currency (optional (string-ascii 10)))
+    (default-amount (optional uint))
+    (amount-step (optional uint))
+    (allow-custom-amount bool)
+    (accepts-stx bool)
+    (accepts-sbtc bool)
+    (accepts-usdcx bool)
+  )
+  (let (
+      (link-id (new-payment-link-id))
+      (now (current-time))
+    )
+    (asserts! (valid-principal recipient) ERR_INVALID_PRINCIPAL)
+    (asserts! (is-none (map-get? payment-link-slugs { slug: slug })) ERR_INVALID_INPUT)
+    (asserts!
+      (or accepts-stx (or accepts-sbtc accepts-usdcx))
+      ERR_INVALID_INPUT
+    )
+    (match default-currency
+      currency
+        (begin
+          (asserts! (valid-currency currency) ERR_INVALID_INPUT)
+          (asserts! (currency-enabled currency accepts-stx accepts-sbtc accepts-usdcx) ERR_INVALID_INPUT)
+        )
+      true
+    )
+    (match default-amount
+      next-amount (asserts! (> next-amount u0) ERR_INVALID_AMOUNT)
+      true
+    )
+    (match amount-step
+      step (asserts! (> step u0) ERR_INVALID_AMOUNT)
+      true
+    )
+    (map-set payment-links { link-id: link-id } {
       merchant: tx-sender,
       recipient: recipient,
-      amount: amount,
-      currency: currency,
-      status: STATUS_PENDING,
-      created-at: now,
-      expires-at: (+ now expires-in-seconds),
-      paid-at: none,
+      slug: slug,
+      kind: LINK_KIND_MULTIPAY,
+      title: title,
       description: description,
+      default-currency: default-currency,
+      default-amount: default-amount,
+      amount-step: amount-step,
+      allow-custom-amount: allow-custom-amount,
+      accepts-stx: accepts-stx,
+      accepts-sbtc: accepts-sbtc,
+      accepts-usdcx: accepts-usdcx,
+      is-active: true,
+      created-at: now,
     })
-    (var-set invoice-total (+ (var-get invoice-total) u1))
+    (map-set payment-link-slugs { slug: slug } { link-id: link-id })
+    (var-set payment-link-total (+ (var-get payment-link-total) u1))
     (print {
-      event: "invoice-created",
-      invoice-id: invoice-id,
+      event: "payment-link-created",
+      link-id: link-id,
+      merchant: tx-sender,
+      slug: slug,
+    })
+    (ok link-id)
+  )
+)
+
+(define-read-only (get-payment-link-view (link-id (string-ascii 85)))
+  (ok (map-get? payment-links { link-id: link-id }))
+)
+
+(define-public (create-universal-qr-link
+    (recipient principal)
+    (slug (string-ascii 64))
+    (title (string-utf8 128))
+    (description (string-utf8 256))
+  )
+  (let (
+      (link-id (new-payment-link-id))
+      (now (current-time))
+    )
+    (asserts! (valid-principal recipient) ERR_INVALID_PRINCIPAL)
+    (asserts! (is-none (map-get? payment-link-slugs { slug: slug })) ERR_INVALID_INPUT)
+    (map-set payment-links { link-id: link-id } {
       merchant: tx-sender,
       recipient: recipient,
-      amount: amount,
-      currency: currency,
+      slug: slug,
+      kind: LINK_KIND_UNIVERSAL,
+      title: title,
+      description: description,
+      default-currency: none,
+      default-amount: none,
+      amount-step: none,
+      allow-custom-amount: true,
+      accepts-stx: true,
+      accepts-sbtc: true,
+      accepts-usdcx: true,
+      is-active: true,
+      created-at: now,
     })
-    (ok invoice-id)
+    (map-set payment-link-slugs { slug: slug } { link-id: link-id })
+    (var-set payment-link-total (+ (var-get payment-link-total) u1))
+    (print {
+      event: "payment-link-created",
+      link-id: link-id,
+      merchant: tx-sender,
+      slug: slug,
+    })
+    (ok link-id)
+  )
+)
+
+(define-public (create-public-invoice-from-link
+    (link-id (string-ascii 85))
+    (currency (string-ascii 10))
+    (amount uint)
+    (expires-in-seconds uint)
+    (description (string-utf8 256))
+  )
+  (let ((link (unwrap! (map-get? payment-links { link-id: link-id }) ERR_LINK_NOT_FOUND)))
+    (asserts! (get is-active link) ERR_INVALID_STATUS)
+    (asserts! (> amount u0) ERR_INVALID_AMOUNT)
+    (asserts! (valid-currency currency) ERR_INVALID_INPUT)
+    (asserts! (> expires-in-seconds u0) ERR_INVALID_INPUT)
+    (asserts!
+      (currency-enabled currency (get accepts-stx link) (get accepts-sbtc link) (get accepts-usdcx link))
+      ERR_INVALID_INPUT
+    )
+    (match (get default-amount link)
+      default-amount
+        (if (get allow-custom-amount link)
+          true
+          (asserts! (is-eq amount default-amount) ERR_INVALID_AMOUNT)
+        )
+      true
+    )
+    (ok (store-invoice
+      (get merchant link)
+      (get recipient link)
+      amount
+      currency
+      expires-in-seconds
+      (if (is-eq description u"")
+        (get title link)
+        description
+      )
+    ))
   )
 )
 
@@ -171,7 +416,6 @@
     (invoice-id (string-ascii 85))
     (payer principal)
     (amount uint)
-    (txid (buff 32))
   )
   (let ((proc (unwrap! (var-get processor) ERR_UNAUTHORIZED)))
     (asserts! (is-eq contract-caller proc) ERR_UNAUTHORIZED)
@@ -179,9 +423,8 @@
         (invoice (unwrap! (map-get? invoices { invoice-id: invoice-id }) ERR_INVOICE_NOT_FOUND))
         (now (current-time))
       )
-      (asserts! (is-eq (get status invoice) STATUS_PENDING) ERR_INVOICE_ALREADY_PAID)
+      (asserts! (is-eq (effective-status invoice) STATUS_PENDING) ERR_INVALID_STATUS)
       (asserts! (is-eq amount (get amount invoice)) ERR_INSUFFICIENT_PAYMENT)
-      (asserts! (< now (get expires-at invoice)) ERR_INVALID_STATUS)
       (map-set invoices { invoice-id: invoice-id }
         (merge invoice {
           status: STATUS_PAID,
@@ -193,7 +436,6 @@
           invoice-id: invoice-id,
           payer: payer,
           amount-paid: amount,
-          tx-id: txid,
           timestamp: now,
         })
         (var-set receipt-total (+ (var-get receipt-total) u1))
@@ -219,8 +461,7 @@
       )
       ERR_UNAUTHORIZED
     )
-    (asserts! (is-eq (get status invoice) STATUS_PENDING) ERR_INVALID_STATUS)
-    (asserts! (<= (get expires-at invoice) (current-time)) ERR_INVALID_STATUS)
+    (asserts! (is-eq (effective-status invoice) STATUS_EXPIRED) ERR_INVALID_STATUS)
     (map-set invoices { invoice-id: invoice-id }
       (merge invoice { status: STATUS_EXPIRED })
     )
@@ -236,17 +477,36 @@
   (ok (map-get? invoices { invoice-id: invoice-id }))
 )
 
+(define-read-only (get-invoice-view (invoice-id (string-ascii 85)))
+  (match (map-get? invoices { invoice-id: invoice-id })
+    invoice
+      (ok (some (merge invoice {
+        status: (effective-status invoice),
+      })))
+    (ok none)
+  )
+)
+
 (define-read-only (get-receipt (receipt-id (string-ascii 85)))
   (ok (map-get? receipts { receipt-id: receipt-id }))
+)
+
+(define-read-only (get-payment-link (link-id (string-ascii 85)))
+  (ok (map-get? payment-links { link-id: link-id }))
+)
+
+(define-read-only (get-payment-link-by-slug (slug (string-ascii 64)))
+  (match (map-get? payment-link-slugs { slug: slug })
+    ref
+      (ok (map-get? payment-links { link-id: (get link-id ref) }))
+    (ok none)
+  )
 )
 
 (define-read-only (is-invoice-payable (invoice-id (string-ascii 85)))
   (match (map-get? invoices { invoice-id: invoice-id })
     invoice
-      (and
-        (is-eq (get status invoice) STATUS_PENDING)
-        (< (current-time) (get expires-at invoice))
-      )
+      (is-eq (effective-status invoice) STATUS_PENDING)
     false
   )
 )
@@ -257,4 +517,8 @@
 
 (define-read-only (get-receipt-count)
   (ok (var-get receipt-total))
+)
+
+(define-read-only (get-payment-link-count)
+  (ok (var-get payment-link-total))
 )

@@ -14,10 +14,9 @@ export type ContractIntent = {
   contractName: "architecture";
   functionName:
     | "create-invoice"
-    | "create-invoice-payment-link"
     | "create-multipay-link"
     | "create-universal-qr-link"
-    | "create-subscription-payment-link";
+    | "create-public-invoice-from-link";
   network: string;
   arguments: ContractArg[];
   notes: string[];
@@ -70,28 +69,8 @@ export function buildCreateInvoiceIntent(input: {
   };
 }
 
-export function buildCreateInvoicePaymentLinkIntent(input: {
-  slug: string;
-  onchainInvoiceId: string;
-  title: string;
-  description: string;
-}): ContractIntent {
-  return {
-    contractId: getArchitectureContractId(),
-    contractName: "architecture",
-    functionName: "create-invoice-payment-link",
-    network: getNetwork(),
-    arguments: [
-      { type: "string-ascii", value: input.slug },
-      { type: "string-ascii", value: input.onchainInvoiceId },
-      { type: "string-utf8", value: input.title },
-      { type: "string-utf8", value: input.description },
-    ],
-    notes: ["Requires the invoice to exist on-chain first."],
-  };
-}
-
 export function buildCreateMultipayLinkIntent(input: {
+  recipientAddress: string;
   slug: string;
   title: string;
   description: string;
@@ -109,6 +88,7 @@ export function buildCreateMultipayLinkIntent(input: {
     functionName: "create-multipay-link",
     network: getNetwork(),
     arguments: [
+      { type: "principal", value: input.recipientAddress },
       { type: "string-ascii", value: input.slug },
       { type: "string-utf8", value: input.title },
       { type: "string-utf8", value: input.description },
@@ -133,6 +113,7 @@ export function buildCreateMultipayLinkIntent(input: {
 }
 
 export function buildCreateUniversalQrIntent(input: {
+  recipientAddress: string;
   slug: string;
   title: string;
   description: string;
@@ -143,10 +124,34 @@ export function buildCreateUniversalQrIntent(input: {
     functionName: "create-universal-qr-link",
     network: getNetwork(),
     arguments: [
+      { type: "principal", value: input.recipientAddress },
       { type: "string-ascii", value: input.slug },
       { type: "string-utf8", value: input.title },
       { type: "string-utf8", value: input.description },
     ],
     notes: ["This replaces the prior active universal QR route on-chain."],
+  };
+}
+
+export function buildCreatePublicInvoiceFromLinkIntent(input: {
+  onchainLinkId: string;
+  currency: Currency;
+  amount: number;
+  expiresInSeconds: number;
+  description: string;
+}): ContractIntent {
+  return {
+    contractId: getArchitectureContractId(),
+    contractName: "architecture",
+    functionName: "create-public-invoice-from-link",
+    network: getNetwork(),
+    arguments: [
+      { type: "string-ascii", value: input.onchainLinkId },
+      { type: "string-ascii", value: input.currency },
+      { type: "uint", value: toAtomicAmount(input.amount, input.currency) },
+      { type: "uint", value: String(input.expiresInSeconds) },
+      { type: "string-utf8", value: input.description },
+    ],
+    notes: ["Customer wallet submits this transaction to generate a fresh invoice from the public payment link."],
   };
 }

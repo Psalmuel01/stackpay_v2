@@ -1,6 +1,7 @@
 import { jsonError, jsonOk } from "@/lib/server/http";
 import { confirmPaymentLinkChain } from "@/lib/server/stackpay-service";
 import { isSupabaseConfigured } from "@/lib/server/supabase-admin";
+import { syncInvoiceCreationTx } from "@/lib/server/stacks-api";
 
 export async function POST(
   request: Request,
@@ -12,10 +13,21 @@ export async function POST(
 
   try {
     const payload = await request.json();
+    let onchainLinkId = payload.onchainLinkId ?? null;
+
+    if (!onchainLinkId && payload.txId) {
+      const sync = await syncInvoiceCreationTx(payload.txId);
+      if (sync.status === "success" && sync.onchainId) {
+        onchainLinkId = sync.onchainId;
+      } else if (sync.status !== "pending") {
+        return jsonError(400, "payment_link_chain_failed", sync.resultRepr ?? "Payment link transaction failed.");
+      }
+    }
+
     const paymentLink = await confirmPaymentLinkChain({
       id: context.params.paymentLinkId,
       txId: payload.txId,
-      onchainId: payload.onchainLinkId,
+      onchainId: onchainLinkId,
     });
     return jsonOk(paymentLink);
   } catch (error) {

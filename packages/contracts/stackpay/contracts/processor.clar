@@ -86,7 +86,6 @@
 (define-public (process-stx-payment
     (invoice-id (string-ascii 85))
     (amount uint)
-    (tx-id (buff 32))
   )
   (let (
       (payer tx-sender)
@@ -101,15 +100,13 @@
     (asserts! (is-eq amount (get amount invoice)) ERR_INVALID_AMOUNT)
     (try! (stx-transfer? amount payer current-contract))
     (credit-balance merchant CURRENCY_STX amount)
-    (try! (contract-call? .architecture process-payment invoice-id payer amount tx-id))
-    (ok true)
+    (contract-call? .architecture process-payment invoice-id payer amount)
   )
 )
 
 (define-public (process-sip-010-payment
     (invoice-id (string-ascii 85))
     (amount uint)
-    (tx-id (buff 32))
     (token <sip-010-trait>)
   )
   (let (
@@ -134,8 +131,7 @@
     (asserts! (is-eq amount (get amount invoice)) ERR_INVALID_AMOUNT)
     (try! (contract-call? token transfer amount payer current-contract none))
     (credit-balance merchant currency amount)
-    (try! (contract-call? .architecture process-payment invoice-id payer amount tx-id))
-    (ok true)
+    (contract-call? .architecture process-payment invoice-id payer amount)
   )
 )
 

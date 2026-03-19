@@ -1,6 +1,6 @@
 import {
+  buildCreatePublicInvoiceFromLinkIntent,
   buildCreateInvoiceIntent,
-  buildCreateInvoicePaymentLinkIntent,
   buildCreateMultipayLinkIntent,
   buildCreateUniversalQrIntent,
   type ContractIntent,
@@ -41,12 +41,11 @@ type CreateInvoiceInput = {
 
 type CreatePaymentLinkInput = {
   walletAddress: string;
-  kind: "invoice" | "multipay" | "subscription";
+  kind: "multipay";
+  recipientAddress?: string;
   slug?: string;
   title: string;
   description?: string;
-  linkedInvoiceId?: string;
-  linkedSubscriptionPlanId?: string;
   defaultCurrency?: Currency;
   acceptedCurrencies?: Currency[];
   defaultAmount?: number | null;
@@ -57,6 +56,7 @@ type CreatePaymentLinkInput = {
 
 type CreateUniversalQrInput = {
   walletAddress: string;
+  recipientAddress?: string;
   slug?: string;
   title?: string;
   description?: string;
@@ -80,6 +80,35 @@ type ChainConfirmationInput = {
   id: string;
   txId: string;
   onchainId?: string | null;
+};
+
+type PreparePublicInvoiceFromLinkInput = {
+  slug: string;
+  amount: number;
+  currency: Currency;
+  customerName?: string;
+  customerEmail?: string;
+  expiresInSeconds?: number | null;
+};
+
+type ConfirmPublicInvoiceInput = {
+  slug: string;
+  txId: string;
+  onchainId: string;
+  amount: number;
+  currency: Currency;
+  customerName?: string;
+  customerEmail?: string;
+  expiresInSeconds: number;
+  confirmedAt?: number | null;
+};
+
+type ConfirmInvoicePaymentInput = {
+  invoiceId: string;
+  txId: string;
+  receiptId: string;
+  payerWalletAddress?: string | null;
+  confirmedAt?: number | null;
 };
 
 async function selectSingle<T extends Row>(table: string, query: Record<string, string>) {
@@ -152,6 +181,26 @@ function assertMerchantSetupReady(merchant: Row | null) {
   }
 }
 
+async function syncExpiredInvoices(filters: Record<string, string>) {
+  const invoices = (await selectRows("invoices", {
+    select: "id,status,expires_at",
+    ...filters,
+  })) as Row[] | null;
+
+  const now = Date.now();
+  const expiredIds =
+    invoices
+      ?.filter((invoice) => {
+        const expiresAt = invoice.expires_at ? Date.parse(String(invoice.expires_at)) : Number.NaN;
+        return invoice.status === "pending" && Number.isFinite(expiresAt) && expiresAt <= now;
+      })
+      .map((invoice) => String(invoice.id)) ?? [];
+
+  for (const id of expiredIds) {
+    await patchRows("invoices", { id }, { status: "expired" });
+  }
+}
+
 export async function getMerchantProfileByWallet(walletAddress: string) {
   return selectSingle<Row>("merchant_profiles", {
     wallet_address: `eq.${ensureWalletAddress(walletAddress)}`,
@@ -203,6 +252,10 @@ export async function listInvoicesForWallet(walletAddress: string) {
     return [];
   }
 
+  await syncExpiredInvoices({
+    merchant_id: `eq.${merchant.id as string}`,
+  });
+
   return (await selectRows("invoices", {
     select: "*",
     merchant_id: `eq.${merchant.id as string}`,
@@ -211,6 +264,10 @@ export async function listInvoicesForWallet(walletAddress: string) {
 }
 
 export async function getInvoiceByIdOrOnchainId(invoiceId: string) {
+  await syncExpiredInvoices({
+    onchain_invoice_id: `eq.${invoiceId}`,
+  });
+
   return selectSingle<Row>("invoices", {
     onchain_invoice_id: `eq.${invoiceId}`,
   });
@@ -357,62 +414,39 @@ export async function getPublicPaymentLinkBySlug(slug: string) {
 }
 
 export async function createPaymentLinkDraft(input: CreatePaymentLinkInput) {
-  const merchant = await upsertMerchantProfile({ walletAddress: input.walletAddress });
-  const slug = slugify(input.slug || `${merchant.slug || merchant.company_name || "stackpay"}-${input.kind}`);
+  const merchant = await getMerchantProfileByWallet(input.walletAddress);
+  assertMerchantSetupReady(merchant);
+  const ensuredMerchant = merchant as Row;
+  const slug = slugify(input.slug || `${ensuredMerchant.slug || ensuredMerchant.company_name || "stackpay"}-${input.kind}`);
   const acceptedCurrencies = buildAcceptedCurrencies(input.defaultCurrency, input.acceptedCurrencies);
-  let contractIntent: ContractIntent;
-
-  if (input.kind === "invoice") {
-    if (!input.linkedInvoiceId) {
-      throw new Error("linkedInvoiceId is required for invoice payment links.");
-    }
-
-    const invoice = await selectSingle<Row>("invoices", {
-      id: `eq.${input.linkedInvoiceId}`,
-    });
-
-    if (!invoice) {
-      throw new Error("Linked invoice was not found.");
-    }
-
-    if (!invoice.onchain_invoice_id) {
-      throw new Error("Linked invoice must be confirmed on-chain before creating its payment link.");
-    }
-
-    contractIntent = buildCreateInvoicePaymentLinkIntent({
-      slug,
-      onchainInvoiceId: String(invoice.onchain_invoice_id),
-      title: input.title,
-      description: input.description ?? "",
-    });
-  } else if (input.kind === "multipay") {
-    const defaultCurrency = input.defaultCurrency ?? "sBTC";
-    contractIntent = buildCreateMultipayLinkIntent({
-      slug,
-      title: input.title,
-      description: input.description ?? "",
-      defaultCurrency,
-      defaultAmount: input.defaultAmount ?? null,
-      amountStep: input.amountStep ?? null,
-      allowCustomAmount: input.allowCustomAmount ?? true,
-      acceptsStx: acceptedCurrencies.includes("STX"),
-      acceptsSbtc: acceptedCurrencies.includes("sBTC"),
-      acceptsUsdcx: acceptedCurrencies.includes("USDCx"),
-    });
-  } else {
-    throw new Error("Subscription payment-link creation is not wired in this route yet.");
-  }
+  const recipientAddress =
+    input.recipientAddress?.trim() ||
+    String(ensuredMerchant.settlement_wallet || input.walletAddress);
+  const defaultCurrency = input.defaultCurrency ?? "sBTC";
+  const contractIntent: ContractIntent = buildCreateMultipayLinkIntent({
+    recipientAddress,
+    slug,
+    title: input.title,
+    description: input.description ?? "",
+    defaultCurrency,
+    defaultAmount: input.defaultAmount ?? null,
+    amountStep: input.amountStep ?? null,
+    allowCustomAmount: input.allowCustomAmount ?? true,
+    acceptsStx: acceptedCurrencies.includes("STX"),
+    acceptsSbtc: acceptedCurrencies.includes("sBTC"),
+    acceptsUsdcx: acceptedCurrencies.includes("USDCx"),
+  });
 
   const linkKey = makeEntityKey("LNK");
   const paymentLink = await insertRow("payment_links", {
-    merchant_id: merchant.id,
+    merchant_id: ensuredMerchant.id,
     link_key: linkKey,
     kind: input.kind,
     slug,
     title: input.title,
     description: input.description ?? "",
-    linked_invoice_id: input.linkedInvoiceId ?? null,
-    linked_subscription_plan_id: input.linkedSubscriptionPlanId ?? null,
+    linked_invoice_id: null,
+    linked_subscription_plan_id: null,
     default_currency: input.defaultCurrency ?? null,
     accepted_currencies: acceptedCurrencies,
     default_amount: input.defaultAmount ?? null,
@@ -424,14 +458,14 @@ export async function createPaymentLinkDraft(input: CreatePaymentLinkInput) {
     metadata: input.metadata ?? {},
   });
 
-  await recordActivity(merchant.id as string, "payment_link", paymentLink.id as string, "payment_link.draft.created", {
+  await recordActivity(ensuredMerchant.id as string, "payment_link", paymentLink.id as string, "payment_link.draft.created", {
     kind: input.kind,
     slug,
   });
 
   return {
     paymentLink,
-    merchant,
+    merchant: ensuredMerchant,
     contractIntent,
   };
 }
@@ -513,7 +547,11 @@ export async function createUniversalQrDraft(input: CreateUniversalQrInput) {
   const title = input.title || `${merchantName} QR`;
   const description =
     input.description || "Permanent universal QR route for daily payments across supported assets.";
+  const recipientAddress =
+    input.recipientAddress?.trim() ||
+    String(ensuredMerchant.settlement_wallet || walletAddress);
   const contractIntent = buildCreateUniversalQrIntent({
+    recipientAddress,
     slug,
     title,
     description,
@@ -562,4 +600,152 @@ export async function createUniversalQrDraft(input: CreateUniversalQrInput) {
     merchant: ensuredMerchant,
     contractIntent,
   };
+}
+
+export async function preparePublicInvoiceFromLink(input: PreparePublicInvoiceFromLinkInput) {
+  ensurePositiveAmount(input.amount, "amount");
+  const paymentLink = (await getPublicPaymentLinkBySlug(input.slug)) as Row | null;
+  if (!paymentLink) {
+    throw new Error("Public payment link not found.");
+  }
+
+  if (!paymentLink.onchain_link_id) {
+    throw new Error("Public payment link is not confirmed on-chain yet.");
+  }
+
+  const acceptedCurrencies = (paymentLink.accepted_currencies as Currency[] | undefined) ?? [];
+  if (!acceptedCurrencies.includes(input.currency)) {
+    throw new Error("Selected currency is not enabled for this payment link.");
+  }
+
+  const defaultAmount = Number(paymentLink.default_amount ?? 0);
+  const allowCustomAmount = Boolean(paymentLink.allow_custom_amount);
+  if (defaultAmount > 0 && !allowCustomAmount && Number(input.amount) !== defaultAmount) {
+    throw new Error("This payment link uses a fixed amount.");
+  }
+
+  const expiresInSeconds =
+    input.expiresInSeconds && input.expiresInSeconds > 0 ? input.expiresInSeconds : 86_400;
+  const description =
+    String(paymentLink.description || paymentLink.title || "Payment via StackPay").trim();
+  const contractIntent = buildCreatePublicInvoiceFromLinkIntent({
+    onchainLinkId: String(paymentLink.onchain_link_id),
+    currency: input.currency,
+    amount: input.amount,
+    expiresInSeconds,
+    description,
+  });
+
+  return {
+    paymentLink,
+    contractIntent,
+    invoice: {
+      amount: input.amount,
+      currency: input.currency,
+      description,
+      customer_name: input.customerName ?? "",
+      customer_email: input.customerEmail ?? "",
+      expires_in_seconds: expiresInSeconds,
+    },
+  };
+}
+
+export async function confirmPublicInvoiceCreation(input: ConfirmPublicInvoiceInput) {
+  ensurePositiveAmount(input.amount, "amount");
+  const paymentLink = (await getPublicPaymentLinkBySlug(input.slug)) as Row | null;
+  if (!paymentLink) {
+    throw new Error("Public payment link not found.");
+  }
+
+  const confirmedAtMs =
+    typeof input.confirmedAt === "number" && input.confirmedAt > 0
+      ? input.confirmedAt * 1000
+      : Date.now();
+
+  const invoice = await upsertRow(
+    "invoices",
+    {
+      merchant_id: paymentLink.merchant_id,
+      onchain_invoice_id: input.onchainId,
+      tx_id: input.txId,
+      status: "pending",
+      amount: input.amount,
+      currency: input.currency,
+      description: String(paymentLink.description || paymentLink.title || "Payment via StackPay"),
+      customer_name: input.customerName ?? "",
+      customer_email: input.customerEmail ?? "",
+      recipient_address: String(paymentLink.merchant?.settlement_wallet || ""),
+      expires_at: new Date(confirmedAtMs + input.expiresInSeconds * 1000).toISOString(),
+    },
+    "onchain_invoice_id"
+  );
+
+  await recordActivity(
+    String(paymentLink.merchant_id),
+    "invoice",
+    input.onchainId,
+    "invoice.created.public-link",
+    {
+      onchainInvoiceId: input.onchainId,
+      slug: input.slug,
+      amount: input.amount,
+      currency: input.currency,
+    },
+    input.txId
+  );
+
+  return invoice;
+}
+
+export async function confirmInvoicePayment(input: ConfirmInvoicePaymentInput) {
+  const invoice = await getInvoiceByIdOrOnchainId(input.invoiceId);
+  if (!invoice) {
+    throw new Error("Invoice not found.");
+  }
+
+  const paidAt =
+    typeof input.confirmedAt === "number" && input.confirmedAt > 0
+      ? new Date(input.confirmedAt * 1000).toISOString()
+      : new Date().toISOString();
+
+  const rows = (await patchRows(
+    "invoices",
+    { onchain_invoice_id: input.invoiceId },
+    {
+      status: "paid",
+      paid_at: paidAt,
+    }
+  )) as Row[];
+
+  const updatedInvoice = rows[0] ?? invoice;
+
+  await upsertRow(
+    "receipts",
+    {
+      merchant_id: updatedInvoice.merchant_id,
+      invoice_id: updatedInvoice.id,
+      receipt_key: input.receiptId,
+      onchain_receipt_id: input.receiptId,
+      tx_id: input.txId,
+      payer_wallet_address: input.payerWalletAddress ?? null,
+      amount: updatedInvoice.amount,
+      currency: updatedInvoice.currency,
+      paid_at: paidAt,
+    },
+    "onchain_receipt_id"
+  );
+
+  await recordActivity(
+    String(updatedInvoice.merchant_id),
+    "invoice",
+    input.invoiceId,
+    "invoice.paid",
+    {
+      onchainInvoiceId: input.invoiceId,
+      receiptId: input.receiptId,
+    },
+    input.txId
+  );
+
+  return updatedInvoice;
 }

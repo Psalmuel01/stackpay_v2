@@ -1,0 +1,61 @@
+import { jsonError, jsonOk } from "@/lib/server/http";
+import { confirmInvoicePayment } from "@/lib/server/stackpay-service";
+import { isSupabaseConfigured } from "@/lib/server/supabase-admin";
+import { syncInvoiceCreationTx } from "@/lib/server/stacks-api";
+
+export async function POST(
+  request: Request,
+  context: { params: { invoiceId: string } }
+) {
+  if (!isSupabaseConfigured()) {
+    return jsonError(503, "supabase_not_configured", "Supabase environment variables are missing.");
+  }
+
+  try {
+    const payload = await request.json();
+    if (!payload.txId) {
+      return jsonError(400, "invalid_request", "txId is required.");
+    }
+
+    const sync = await syncInvoiceCreationTx(payload.txId);
+
+    if (sync.status === "pending") {
+      return jsonOk({
+        invoice: null,
+        sync: {
+          status: "pending",
+          receiptId: null,
+        },
+      });
+    }
+
+    if (sync.status !== "success" || !sync.onchainId) {
+      return jsonOk({
+        invoice: null,
+        sync: {
+          status: sync.status,
+          receiptId: null,
+          result: sync.resultRepr,
+        },
+      });
+    }
+
+    const invoice = await confirmInvoicePayment({
+      invoiceId: context.params.invoiceId,
+      txId: payload.txId,
+      receiptId: sync.onchainId,
+      payerWalletAddress: payload.payerWalletAddress ?? null,
+      confirmedAt: sync.confirmedAt,
+    });
+
+    return jsonOk({
+      invoice,
+      sync: {
+        status: "success",
+        receiptId: sync.onchainId,
+      },
+    });
+  } catch (error) {
+    return jsonError(500, "invoice_payment_confirm_failed", error instanceof Error ? error.message : "Unexpected error.");
+  }
+}

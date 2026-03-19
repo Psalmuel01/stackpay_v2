@@ -5,7 +5,7 @@ import Link from "next/link";
 import GlassCard from "@/components/GlassCard";
 import PageHeader from "@/components/app/PageHeader";
 import QrPreview from "@/components/app/QrPreview";
-import { type Currency, formatCurrencyAmount, useDemo } from "@/components/app/DemoProvider";
+import { type Currency, formatCurrencyAmount } from "@/components/app/DemoProvider";
 import {
   getConnectedWalletAddress,
   submitContractIntent,
@@ -19,6 +19,7 @@ type MerchantProfile = {
   settlement_wallet?: string | null;
   display_name?: string;
   company_name?: string;
+  slug?: string | null;
 };
 
 const flows: Array<{ id: CreateFlow; label: string; summary: string }> = [
@@ -60,7 +61,6 @@ function truncateAddress(address: string) {
 }
 
 export default function CreateInvoicePage() {
-  const { state, actions } = useDemo();
   const [flow, setFlow] = useState<CreateFlow>("standard");
   const [currency, setCurrency] = useState<Currency>("sBTC");
   const [amount, setAmount] = useState("");
@@ -201,6 +201,31 @@ export default function CreateInvoicePage() {
     };
   }
 
+  async function confirmPaymentLinkFromChain(paymentLinkId: string, txId: string) {
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const response = await fetch(`/api/payment-links/${paymentLinkId}/chain`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ txId }),
+      });
+
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload?.error?.message ?? "Failed to confirm payment link transaction.");
+      }
+
+      if (payload.data?.onchain_link_id) {
+        return payload.data;
+      }
+
+      await new Promise((resolve) => window.setTimeout(resolve, 3000));
+    }
+
+    return null;
+  }
+
   async function submit() {
     setError(null);
 
@@ -319,22 +344,80 @@ export default function CreateInvoicePage() {
       return;
     }
 
-    const link = actions.createPaymentLink({
-      slug: slugify(slug || `${state.merchant.slug}-multipay`),
-      title: title || "MultiPay route",
-      description,
-      mode: "multipay",
-      currency,
-      defaultAmount: Number(amount || 0),
-      amountStep: Number(amountStep || 0),
-      allowCustomAmount: true,
-    });
+    if (!connectedAddress) {
+      setError("Connect a merchant wallet before creating a MultiPay route.");
+      return;
+    }
 
-    setResult({
-      title: link.id,
-      href: `/pay/link/${link.slug}`,
-      summary: "MultiPay link created. It stays active and can generate multiple payments over time.",
-    });
+    if (!merchantReady) {
+      setError("Complete Settings first so the payment link has a real merchant identity.");
+      return;
+    }
+
+    setSubmitting(true);
+
+    try {
+      const response = await fetch("/api/payment-links", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          walletAddress: connectedAddress,
+          kind: "multipay",
+          recipientAddress: resolvedRecipientAddress,
+          slug: slugify(slug || `${merchantProfile?.slug || "stackpay"}-multipay`),
+          title: title || "MultiPay route",
+          description,
+          defaultCurrency: currency,
+          acceptedCurrencies: [currency],
+          defaultAmount: Number(amount || 0) || null,
+          amountStep: Number(amountStep || 0) || null,
+          allowCustomAmount: true,
+        }),
+      });
+
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload?.error?.message ?? "Failed to prepare payment link.");
+      }
+
+      const paymentLink = payload.data.paymentLink;
+      const contractIntent = payload.data.contractIntent as StackPayContractIntent;
+
+      await submitContractIntent(contractIntent, {
+        onCancel: () => {
+          setError("Contract call was canceled.");
+        },
+        onFinish: async ({ txId }) => {
+          try {
+            setResult({
+              title: paymentLink.slug,
+              summary: "Transaction broadcast. Waiting for the chain to confirm the payment link.",
+              contractIntent,
+              storage: "Stacks pending",
+              txId,
+            });
+
+            const chainLink = await confirmPaymentLinkFromChain(paymentLink.id, txId);
+            setResult({
+              title: chainLink?.onchain_link_id ?? paymentLink.slug,
+              href: `/pay/link/${paymentLink.slug}`,
+              summary: "MultiPay route created and stored. Customers can now use this public route to generate invoices and pay.",
+              contractIntent,
+              storage: "Supabase + Stacks",
+              txId,
+            });
+          } catch (syncError) {
+            setError(syncError instanceof Error ? syncError.message : "Failed to confirm payment link.");
+          }
+        },
+      });
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Failed to create MultiPay route.");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (

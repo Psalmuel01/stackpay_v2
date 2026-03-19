@@ -40,10 +40,11 @@ describe("processor", () => {
     const payment = simnet.callPublicFn(
       "processor",
       "process-stx-payment",
-      [stringAsciiCV(invoiceId), uintCV(1000), Cl.bufferFromHex("11".repeat(32))],
+      [stringAsciiCV(invoiceId), uintCV(1000)],
       payer
     );
-    expect(payment.result).toBeOk(Cl.bool(true));
+    const receiptId = cvToValue(payment.result.value) as string;
+    expect(payment.result).toBeOk(Cl.stringAscii(receiptId));
 
     const paidAt = getCurrentTime(merchant);
     const invoice = simnet.callReadOnlyFn(
@@ -101,7 +102,7 @@ describe("processor", () => {
       tx.callPublicFn(
         "processor",
         "process-stx-payment",
-        [stringAsciiCV(invoiceId), uintCV(1000), Cl.bufferFromHex("22".repeat(32))],
+        [stringAsciiCV(invoiceId), uintCV(1000)],
         payer
       ),
     ]);
