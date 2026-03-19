@@ -16,20 +16,29 @@ type MerchantProfile = {
   default_currency?: "sBTC" | "STX" | "USDCx";
 };
 
-const currencies: Array<"sBTC" | "STX" | "USDCx"> = ["sBTC", "STX", "USDCx"];
+function truncateAddress(address: string) {
+  return `${address.slice(0, 6)}...${address.slice(-4)}`;
+}
 
 export default function ProfilePage() {
-  const connectedAddress = getConnectedWalletAddress();
+  const [connectedAddress, setConnectedAddress] = useState<string | null>(null);
   const [profile, setProfile] = useState<MerchantProfile>({
     default_currency: "sBTC",
   });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [editingSettlement, setEditingSettlement] = useState(false);
+  const [settlementDraft, setSettlementDraft] = useState("");
+
+  useEffect(() => {
+    setConnectedAddress(getConnectedWalletAddress());
+  }, []);
 
   useEffect(() => {
     if (!connectedAddress) {
       setProfile({ default_currency: "sBTC" });
+      setSettlementDraft("");
       return;
     }
 
@@ -49,15 +58,18 @@ export default function ProfilePage() {
           return;
         }
 
+        const settlementWallet = merchant?.settlement_wallet ?? connectedAddress;
+
         setProfile({
           display_name: merchant?.display_name ?? "",
           company_name: merchant?.company_name ?? "",
           email: merchant?.email ?? "",
           slug: merchant?.slug ?? "",
-          settlement_wallet: merchant?.settlement_wallet ?? connectedAddress,
+          settlement_wallet: settlementWallet,
           webhook_url: merchant?.webhook_url ?? "",
           default_currency: merchant?.default_currency ?? "sBTC",
         });
+        setSettlementDraft(settlementWallet);
       })
       .catch(() => {
         if (!cancelled) {
@@ -65,6 +77,7 @@ export default function ProfilePage() {
             ...current,
             settlement_wallet: connectedAddress,
           }));
+          setSettlementDraft(connectedAddress);
         }
       });
 
@@ -93,6 +106,7 @@ export default function ProfilePage() {
     setSaving(true);
 
     try {
+      const settlementWallet = settlementDraft.trim() || connectedAddress;
       const response = await fetch("/api/merchant/profile", {
         method: "POST",
         headers: {
@@ -104,7 +118,7 @@ export default function ProfilePage() {
           companyName: profile.company_name ?? "",
           email: profile.email ?? "",
           slug: profile.slug ?? "",
-          settlementWallet: profile.settlement_wallet || connectedAddress,
+          settlementWallet,
           webhookUrl: profile.webhook_url || "",
           defaultCurrency: profile.default_currency ?? "sBTC",
         }),
@@ -116,15 +130,19 @@ export default function ProfilePage() {
       }
 
       const merchant = payload.data as MerchantProfile;
+      const nextSettlementWallet = merchant.settlement_wallet ?? connectedAddress;
+
       setProfile({
         display_name: merchant.display_name ?? "",
         company_name: merchant.company_name ?? "",
         email: merchant.email ?? "",
         slug: merchant.slug ?? "",
-        settlement_wallet: merchant.settlement_wallet ?? connectedAddress,
+        settlement_wallet: nextSettlementWallet,
         webhook_url: merchant.webhook_url ?? "",
         default_currency: merchant.default_currency ?? "sBTC",
       });
+      setSettlementDraft(nextSettlementWallet);
+      setEditingSettlement(false);
       setSaved(true);
       window.setTimeout(() => setSaved(false), 1800);
     } catch (nextError) {
@@ -134,47 +152,48 @@ export default function ProfilePage() {
     }
   }
 
+  const resolvedSettlement = settlementDraft || profile.settlement_wallet || connectedAddress || "";
+  const merchantName = (profile.company_name || profile.display_name || "").trim();
+
   return (
     <div>
       <PageHeader
-        title="Profile & Settings"
-        subtitle="Save merchant metadata, default settlement wallet, and webhook details for the current connected wallet."
+        title="Profile"
+        subtitle="Save your merchant identity and payout settings before creating invoices or public payment routes."
       />
 
-      <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+      <div className="grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
         <GlassCard>
-          <div className="mb-3 text-sm uppercase tracking-[0.3em] text-white/40">Merchant profile</div>
+          <div className="mb-4 text-sm uppercase tracking-[0.3em] text-white/40">Merchant profile</div>
           <form onSubmit={handleSave} className="space-y-3">
-            <input
-              className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70"
-              value={profile.company_name ?? ""}
-              onChange={(event) => updateField("company_name", event.target.value)}
-              placeholder="Business name"
-            />
-            <input
-              className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70"
-              value={profile.display_name ?? ""}
-              onChange={(event) => updateField("display_name", event.target.value)}
-              placeholder="Display name"
-            />
-            <input
-              className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70"
-              value={profile.email ?? ""}
-              onChange={(event) => updateField("email", event.target.value)}
-              placeholder="Email address"
-            />
-            <input
-              className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70"
-              value={profile.slug ?? ""}
-              onChange={(event) => updateField("slug", event.target.value)}
-              placeholder="Public slug"
-            />
-            <input
-              className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70"
-              value={profile.settlement_wallet ?? connectedAddress ?? ""}
-              onChange={(event) => updateField("settlement_wallet", event.target.value)}
-              placeholder="Settlement wallet"
-            />
+            <div className="grid gap-3 md:grid-cols-2">
+              <input
+                className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70"
+                value={profile.company_name ?? ""}
+                onChange={(event) => updateField("company_name", event.target.value)}
+                placeholder="Business name"
+              />
+              <input
+                className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70"
+                value={profile.display_name ?? ""}
+                onChange={(event) => updateField("display_name", event.target.value)}
+                placeholder="Display name"
+              />
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              <input
+                className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70"
+                value={profile.email ?? ""}
+                onChange={(event) => updateField("email", event.target.value)}
+                placeholder="Email address"
+              />
+              <input
+                className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70"
+                value={profile.slug ?? ""}
+                onChange={(event) => updateField("slug", event.target.value)}
+                placeholder="Public slug"
+              />
+            </div>
             <input
               className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70"
               value={profile.webhook_url ?? ""}
@@ -182,21 +201,46 @@ export default function ProfilePage() {
               placeholder="Webhook endpoint"
             />
 
-            <div className="grid grid-cols-3 gap-2">
-              {currencies.map((currency) => (
+            <div className="rounded-[24px] border border-white/10 bg-white/5 p-4">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="text-[11px] uppercase tracking-[0.24em] text-white/35">Settlement wallet</div>
+                  <div className="mt-2 text-sm text-white/80">
+                    {resolvedSettlement ? truncateAddress(resolvedSettlement) : "Will default to the connected wallet"}
+                  </div>
+                  <div className="mt-2 text-xs text-white/45">
+                    StackPay sends invoice payouts to this address. If you leave it empty, the connected wallet is used.
+                  </div>
+                </div>
                 <button
-                  key={currency}
                   type="button"
-                  onClick={() => updateField("default_currency", currency)}
-                  className={`rounded-full px-4 py-2 text-xs transition ${
-                    profile.default_currency === currency
-                      ? "border border-white/20 bg-white text-black"
-                      : "border border-white/10 bg-white/5 text-white/70"
-                  }`}
+                  onClick={() => {
+                    setEditingSettlement((current) => !current);
+                    setSettlementDraft(profile.settlement_wallet ?? connectedAddress ?? "");
+                  }}
+                  className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs text-white/75"
                 >
-                  {currency}
+                  {editingSettlement ? "Close" : profile.settlement_wallet ? "Change" : "Set wallet"}
                 </button>
-              ))}
+              </div>
+
+              {editingSettlement ? (
+                <div className="mt-4 space-y-3">
+                  <input
+                    className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white/70"
+                    value={settlementDraft}
+                    onChange={(event) => setSettlementDraft(event.target.value)}
+                    placeholder={connectedAddress ?? "Connect wallet first"}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setSettlementDraft(connectedAddress ?? "")}
+                    className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs text-white/75"
+                  >
+                    Use connected wallet
+                  </button>
+                </div>
+              ) : null}
             </div>
 
             <button
@@ -211,20 +255,41 @@ export default function ProfilePage() {
           </form>
         </GlassCard>
 
-        <GlassCard>
-          <div className="mb-3 text-sm uppercase tracking-[0.3em] text-white/40">Wallet state</div>
-          <div className="space-y-3 text-sm text-white/70">
-            <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
-              {connectedAddress ? `Connected: ${connectedAddress}` : "No wallet connected"}
+        <div className="grid gap-6">
+          <GlassCard>
+            <div className="mb-4 text-sm uppercase tracking-[0.3em] text-white/40">Connected wallet</div>
+            <div className="rounded-[24px] border border-white/10 bg-white/5 p-4">
+              <div className="text-[11px] uppercase tracking-[0.24em] text-white/35">Primary address</div>
+              <div className="mt-2 text-sm text-white/80">
+                {connectedAddress ? truncateAddress(connectedAddress) : "No wallet connected"}
+              </div>
+              <div className="mt-2 text-xs text-white/45">
+                This wallet is used to sign invoice creation transactions and acts as the default payout address until you set a separate settlement wallet.
+              </div>
             </div>
-            <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
-              {profile.settlement_wallet || connectedAddress || "Settlement wallet will default to the connected wallet."}
+          </GlassCard>
+
+          <GlassCard>
+            <div className="mb-4 text-sm uppercase tracking-[0.3em] text-white/40">Readiness</div>
+            <div className="grid gap-3">
+              <div className="rounded-[20px] border border-white/10 bg-white/5 px-4 py-3">
+                <div className="text-[11px] uppercase tracking-[0.22em] text-white/35">Merchant name</div>
+                <div className="mt-2 text-sm text-white/80">
+                  {merchantName || "Add a business or display name"}
+                </div>
+              </div>
+              <div className="rounded-[20px] border border-white/10 bg-white/5 px-4 py-3">
+                <div className="text-[11px] uppercase tracking-[0.22em] text-white/35">Settlement destination</div>
+                <div className="mt-2 text-sm text-white/80">
+                  {resolvedSettlement ? truncateAddress(resolvedSettlement) : "Waiting for wallet connection"}
+                </div>
+              </div>
+              <div className="rounded-[20px] border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70">
+                Customers will see your saved merchant name on hosted invoices and QR routes. Finish this page first for a cleaner payment experience.
+              </div>
             </div>
-            <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white/80">
-              Invoice recipient defaults to the saved settlement wallet. If none is saved, StackPay uses the connected wallet address.
-            </div>
-          </div>
-        </GlassCard>
+          </GlassCard>
+        </div>
       </div>
     </div>
   );

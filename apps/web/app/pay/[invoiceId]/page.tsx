@@ -23,7 +23,15 @@ export default function HostedPaymentPage({
   const localInvoice = state.invoices.find((item) => item.id === params.invoiceId) ?? null;
   const invoice = localInvoice ?? remoteInvoice;
   const receipt = state.receipts.find((item) => item.invoiceId === params.invoiceId);
-  const connectedAddress = getConnectedWalletAddress();
+  const [connectedAddress, setConnectedAddress] = useState<string | null>(null);
+  const merchantName =
+    remoteInvoice?.merchant?.company_name ||
+    remoteInvoice?.merchant?.display_name ||
+    state.merchant.businessName;
+
+  useEffect(() => {
+    setConnectedAddress(getConnectedWalletAddress());
+  }, []);
 
   useEffect(() => {
     if (state.invoices.find((item) => item.id === params.invoiceId)) {
@@ -92,10 +100,9 @@ export default function HostedPaymentPage({
           <div className="space-y-6">
             <div className="space-y-3 text-center">
               <div className="text-xs uppercase tracking-[0.35em] text-white/40">Hosted payment</div>
-              <h1 className="text-4xl font-semibold text-white">{state.merchant.businessName}</h1>
+              <h1 className="text-4xl font-semibold text-white">{merchantName}</h1>
               <p className="mx-auto max-w-xl text-sm text-white/60">
-                Review the invoice summary, connect a wallet, and complete payment. This demo writes the
-                result back into the merchant dashboard, invoices, receipts, and webhook log.
+                Review the invoice summary, connect a wallet, and complete payment.
               </p>
             </div>
 

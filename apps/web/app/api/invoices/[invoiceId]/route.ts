@@ -1,5 +1,5 @@
 import { jsonError, jsonOk } from "@/lib/server/http";
-import { getInvoiceByIdOrOnchainId } from "@/lib/server/stackpay-service";
+import { getInvoiceDetailsByOnchainId } from "@/lib/server/stackpay-service";
 import { isSupabaseConfigured } from "@/lib/server/supabase-admin";
 
 export async function GET(
@@ -11,7 +11,7 @@ export async function GET(
   }
 
   try {
-    const invoice = await getInvoiceByIdOrOnchainId(context.params.invoiceId);
+    const invoice = await getInvoiceDetailsByOnchainId(context.params.invoiceId);
     if (!invoice) {
       return jsonError(404, "not_found", "Invoice not found.");
     }

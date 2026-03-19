@@ -132,6 +132,26 @@ async function recordActivity(
   });
 }
 
+function merchantDisplayName(merchant: Row | null) {
+  if (!merchant) {
+    return "";
+  }
+
+  const companyName = String(merchant.company_name ?? "").trim();
+  const displayName = String(merchant.display_name ?? "").trim();
+  return companyName || displayName;
+}
+
+function assertMerchantSetupReady(merchant: Row | null) {
+  if (!merchant) {
+    throw new Error("Complete your merchant settings before creating an invoice.");
+  }
+
+  if (!merchantDisplayName(merchant)) {
+    throw new Error("Add a business name or display name in Settings before creating an invoice.");
+  }
+}
+
 export async function getMerchantProfileByWallet(walletAddress: string) {
   return selectSingle<Row>("merchant_profiles", {
     wallet_address: `eq.${ensureWalletAddress(walletAddress)}`,
@@ -196,10 +216,33 @@ export async function getInvoiceByIdOrOnchainId(invoiceId: string) {
   });
 }
 
+export async function getInvoiceDetailsByOnchainId(invoiceId: string) {
+  const invoice = await getInvoiceByIdOrOnchainId(invoiceId);
+  if (!invoice) {
+    return null;
+  }
+
+  const merchant = await selectSingle<Row>("merchant_profiles", {
+    id: `eq.${String(invoice.merchant_id)}`,
+  });
+
+  return {
+    ...invoice,
+    merchant: merchant
+      ? {
+          display_name: merchant.display_name ?? "",
+          company_name: merchant.company_name ?? "",
+          slug: merchant.slug ?? "",
+        }
+      : null,
+  };
+}
+
 export async function prepareInvoiceCreation(input: CreateInvoiceInput) {
   ensurePositiveAmount(input.amount, "amount");
   const walletAddress = ensureWalletAddress(input.walletAddress);
   const merchant = await getMerchantProfileByWallet(walletAddress);
+  assertMerchantSetupReady(merchant);
   const expiresInSeconds =
     input.expiresInSeconds && input.expiresInSeconds > 0 ? input.expiresInSeconds : 86_400;
   const recipientAddress = input.recipientAddress?.trim() || walletAddress;
@@ -284,6 +327,33 @@ export async function listPaymentLinksForWallet(walletAddress: string) {
     merchant_id: `eq.${merchant.id as string}`,
     order: "created_at.desc",
   })) as Row[];
+}
+
+export async function getPublicPaymentLinkBySlug(slug: string) {
+  const paymentLink = await selectSingle<Row>("payment_links", {
+    slug: `eq.${slug}`,
+    is_active: "eq.true",
+  });
+
+  if (!paymentLink) {
+    return null;
+  }
+
+  const merchant = await selectSingle<Row>("merchant_profiles", {
+    id: `eq.${String(paymentLink.merchant_id)}`,
+  });
+
+  return {
+    ...paymentLink,
+    merchant: merchant
+      ? {
+          display_name: merchant.display_name ?? "",
+          company_name: merchant.company_name ?? "",
+          slug: merchant.slug ?? "",
+          settlement_wallet: merchant.settlement_wallet ?? "",
+        }
+      : null,
+  };
 }
 
 export async function createPaymentLinkDraft(input: CreatePaymentLinkInput) {
@@ -432,9 +502,15 @@ export async function getUniversalQrForWallet(walletAddress: string) {
 }
 
 export async function createUniversalQrDraft(input: CreateUniversalQrInput) {
-  const merchant = await upsertMerchantProfile({ walletAddress: input.walletAddress });
-  const slug = slugify(input.slug || `${merchant.slug || merchant.company_name || "stackpay"}-pay`);
-  const title = input.title || `${merchant.company_name || merchant.display_name || "StackPay"} QR`;
+  const walletAddress = ensureWalletAddress(input.walletAddress);
+  const merchant = await getMerchantProfileByWallet(walletAddress);
+  assertMerchantSetupReady(merchant);
+  const ensuredMerchant = merchant as Row;
+
+  const merchantName = merchantDisplayName(ensuredMerchant);
+  const merchantSlug = String(ensuredMerchant.slug ?? merchantName);
+  const slug = slugify(input.slug || `${merchantSlug}-pay`);
+  const title = input.title || `${merchantName} QR`;
   const description =
     input.description || "Permanent universal QR route for daily payments across supported assets.";
   const contractIntent = buildCreateUniversalQrIntent({
@@ -444,8 +520,20 @@ export async function createUniversalQrDraft(input: CreateUniversalQrInput) {
   });
   const linkKey = makeEntityKey("QR");
 
+  await patchRows(
+    "payment_links",
+    {
+      merchant_id: String(ensuredMerchant.id),
+      is_universal: "eq.true",
+      is_active: "eq.true",
+    },
+    {
+      is_active: false,
+    }
+  );
+
   const paymentLink = await insertRow("payment_links", {
-    merchant_id: merchant.id,
+    merchant_id: ensuredMerchant.id,
     link_key: linkKey,
     kind: "multipay",
     slug,
@@ -464,14 +552,14 @@ export async function createUniversalQrDraft(input: CreateUniversalQrInput) {
     },
   });
 
-  await recordActivity(merchant.id as string, "payment_link", paymentLink.id as string, "payment_link.qr.created", {
+  await recordActivity(ensuredMerchant.id as string, "payment_link", paymentLink.id as string, "payment_link.qr.created", {
     slug,
     universal: true,
   });
 
   return {
     paymentLink,
-    merchant,
+    merchant: ensuredMerchant,
     contractIntent,
   };
 }

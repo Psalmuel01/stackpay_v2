@@ -17,6 +17,8 @@ type ExpirationOption = number | "custom";
 
 type MerchantProfile = {
   settlement_wallet?: string | null;
+  display_name?: string;
+  company_name?: string;
 };
 
 const flows: Array<{ id: CreateFlow; label: string; summary: string }> = [
@@ -63,7 +65,8 @@ export default function CreateInvoicePage() {
   const [currency, setCurrency] = useState<Currency>("sBTC");
   const [amount, setAmount] = useState("");
   const [expiration, setExpiration] = useState<ExpirationOption>(24);
-  const [customExpirationHours, setCustomExpirationHours] = useState("48");
+  const [customExpirationValue, setCustomExpirationValue] = useState("48");
+  const [customExpirationUnit, setCustomExpirationUnit] = useState<"minutes" | "hours" | "days">("hours");
   const [customer, setCustomer] = useState("");
   const [email, setEmail] = useState("");
   const [description, setDescription] = useState("");
@@ -83,9 +86,14 @@ export default function CreateInvoicePage() {
   const [copied, setCopied] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const connectedAddress = getConnectedWalletAddress();
+  const [connectedAddress, setConnectedAddress] = useState<string | null>(null);
   const resolvedRecipientAddress = merchantProfile?.settlement_wallet || connectedAddress || "";
+  const merchantName = (merchantProfile?.company_name || merchantProfile?.display_name || "").trim();
+  const merchantReady = Boolean(connectedAddress && merchantName);
+
+  useEffect(() => {
+    setConnectedAddress(getConnectedWalletAddress());
+  }, []);
 
   useEffect(() => {
     if (!connectedAddress) {
@@ -208,11 +216,18 @@ export default function CreateInvoicePage() {
         return;
       }
 
-      const resolvedExpirationHours =
-        expiration === "custom" ? Number(customExpirationHours || 0) : expiration;
+      const customValue = Number(customExpirationValue || 0);
+      const expiresInSeconds =
+        expiration === "custom"
+          ? customExpirationUnit === "minutes"
+            ? customValue * 60
+            : customExpirationUnit === "hours"
+              ? customValue * 60 * 60
+              : customValue * 24 * 60 * 60
+          : expiration * 60 * 60;
 
-      if (!Number.isFinite(resolvedExpirationHours) || resolvedExpirationHours <= 0) {
-        setError("Enter a valid expiration window in hours.");
+      if (!Number.isFinite(expiresInSeconds) || expiresInSeconds <= 0) {
+        setError("Enter a valid expiration window.");
         return;
       }
 
@@ -221,10 +236,14 @@ export default function CreateInvoicePage() {
         return;
       }
 
+      if (!merchantReady) {
+        setError("Complete Settings first so StackPay has a real merchant name to show on the hosted invoice page.");
+        return;
+      }
+
       setSubmitting(true);
 
       try {
-        const expiresInSeconds = resolvedExpirationHours * 60 * 60;
         const response = await fetch("/api/invoices", {
           method: "POST",
           headers: {
@@ -425,14 +444,37 @@ export default function CreateInvoicePage() {
                     ))}
                   </div>
                   {expiration === "custom" ? (
-                    <div className="mt-3 max-w-xs">
-                      <input
-                        className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/80 outline-none"
-                        value={customExpirationHours}
-                        onChange={(event) => setCustomExpirationHours(event.target.value)}
-                        placeholder="Hours until expiry"
-                      />
-                    </div>
+                    <>
+                      <div className="mt-3 max-w-xs">
+                        <input
+                          className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/80 outline-none"
+                          value={customExpirationValue}
+                          onChange={(event) => setCustomExpirationValue(event.target.value)}
+                          placeholder="48"
+                        />
+                      </div>
+                      <div className="mt-3 max-w-xs">
+                        <div className="grid grid-cols-3 gap-2">
+                          {(["minutes", "hours", "days"] as const).map((unit) => (
+                            <button
+                              key={unit}
+                              type="button"
+                              onClick={() => setCustomExpirationUnit(unit)}
+                              className={`rounded-full px-3 py-2 text-xs transition ${
+                                customExpirationUnit === unit
+                                  ? "border border-white/20 bg-white text-black"
+                                  : "border border-white/10 bg-white/5 text-white/70"
+                              }`}
+                            >
+                              {unit}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="mt-2 text-xs text-white/45">
+                        Custom expiry is a duration from now. Choose the value and whether it is in minutes, hours, or days.
+                      </div>
+                    </>
                   ) : null}
                 </div>
 
@@ -505,19 +547,27 @@ export default function CreateInvoicePage() {
                 </div>
               </div>
               <div>
-                <label className="text-xs uppercase tracking-[0.24em] text-white/40">Outcome</label>
+                <label className="text-xs uppercase tracking-[0.24em] text-white/40">Merchant</label>
                 <div className="mt-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70">
-                  {flow === "standard"
-                    ? "Creates a single-payment invoice"
-                    : "Creates a reusable MultiPay route"}
+                  {merchantName || "Complete Settings first"}
                 </div>
               </div>
             </div>
 
+            {flow === "standard" && !merchantReady ? (
+              <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70">
+                Add a business name or display name in{" "}
+                <Link href="/profile" className="text-white underline underline-offset-4">
+                  Settings
+                </Link>{" "}
+                before creating invoices. That merchant name is what customers will see on the hosted payment page.
+              </div>
+            ) : null}
+
             <div className="flex flex-wrap gap-3">
               <button
                 onClick={() => void submit()}
-                disabled={submitting}
+                disabled={submitting || (flow === "standard" && !merchantReady)}
                 className="button-glow rounded-full border border-white/50 bg-white px-6 py-3 text-sm font-semibold text-black transition hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {submitting ? "Working..." : flow === "standard" ? "Generate invoice" : "Create MultiPay route"}

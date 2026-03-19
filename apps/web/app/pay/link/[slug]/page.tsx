@@ -2,13 +2,31 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import GlassCard from "@/components/GlassCard";
 import {
   type Currency,
   formatCurrencyAmount,
   useDemo,
 } from "@/components/app/DemoProvider";
+
+type RemotePaymentLink = {
+  kind: "invoice" | "multipay" | "subscription";
+  slug: string;
+  title: string;
+  description: string;
+  accepted_currencies?: Currency[];
+  default_currency?: Currency | null;
+  default_amount?: number | null;
+  amount_step?: number | null;
+  allow_custom_amount?: boolean;
+  is_universal?: boolean;
+  merchant?: {
+    company_name?: string;
+    display_name?: string;
+    settlement_wallet?: string;
+  } | null;
+};
 
 function defaultAmountConfig(currency: Currency) {
   if (currency === "sBTC") {
@@ -25,6 +43,10 @@ function normalizeAmount(value: number, step: number, delta: number) {
   return Math.max(step > 0 ? step : 0, Math.round(next * 1000) / 1000);
 }
 
+function truncateAddress(address: string) {
+  return `${address.slice(0, 6)}...${address.slice(-4)}`;
+}
+
 export default function PublicPaymentLinkPage({
   params,
 }: {
@@ -32,25 +54,97 @@ export default function PublicPaymentLinkPage({
 }) {
   const router = useRouter();
   const { state, actions } = useDemo();
-  const link = state.paymentLinks.find((item) => item.slug === params.slug && item.isActive);
-  const linkedPlan = state.plans.find((item) => item.id === link?.planId);
-  const availableCurrencies = link?.acceptedCurrencies ?? (link ? [link.currency] : []);
-  const [selectedCurrency, setSelectedCurrency] = useState<Currency>(
-    availableCurrencies[0] ?? "sBTC"
-  );
+  const [remoteLink, setRemoteLink] = useState<RemotePaymentLink | null>(null);
+  const [loadingRemote, setLoadingRemote] = useState(true);
+
+  const localLink = state.paymentLinks.find((item) => item.slug === params.slug && item.isActive);
+  const linkedPlan = state.plans.find((item) => item.id === localLink?.planId);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingRemote(true);
+
+    fetch(`/api/payment-links/public/${params.slug}`)
+      .then(async (response) => {
+        if (!response.ok) {
+          return null;
+        }
+        const payload = await response.json();
+        return (payload.data ?? null) as RemotePaymentLink | null;
+      })
+      .then((payload) => {
+        if (!cancelled) {
+          setRemoteLink(payload);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoadingRemote(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [params.slug]);
+
+  const link = localLink
+    ? {
+        source: "local" as const,
+        mode: localLink.mode,
+        title: localLink.title,
+        description: localLink.description,
+        acceptedCurrencies: localLink.acceptedCurrencies ?? [localLink.currency],
+        currency: localLink.currency,
+        defaultAmount: localLink.defaultAmount,
+        amountStep: localLink.amountStep,
+        allowCustomAmount: localLink.allowCustomAmount,
+        invoiceId: localLink.invoiceId,
+        slug: localLink.slug,
+        merchantName: state.merchant.businessName,
+        settlementWallet: state.merchant.settlementWallet,
+        isUniversal: localLink.isUniversal,
+      }
+    : remoteLink
+      ? {
+          source: "remote" as const,
+          mode: remoteLink.kind,
+          title: remoteLink.title,
+          description: remoteLink.description,
+          acceptedCurrencies: remoteLink.accepted_currencies ?? (remoteLink.default_currency ? [remoteLink.default_currency] : ["sBTC", "STX", "USDCx"]),
+          currency: remoteLink.default_currency ?? "sBTC",
+          defaultAmount: remoteLink.default_amount ?? null,
+          amountStep: remoteLink.amount_step ?? null,
+          allowCustomAmount: remoteLink.allow_custom_amount ?? true,
+          invoiceId: null,
+          slug: remoteLink.slug,
+          merchantName: remoteLink.merchant?.company_name || remoteLink.merchant?.display_name || "Merchant",
+          settlementWallet: remoteLink.merchant?.settlement_wallet || "",
+          isUniversal: remoteLink.is_universal ?? false,
+        }
+      : null;
+
+  const availableCurrencies = link?.acceptedCurrencies ?? [];
+  const [selectedCurrency, setSelectedCurrency] = useState<Currency>("sBTC");
   const [email, setEmail] = useState("");
   const [customer, setCustomer] = useState("");
   const [seats, setSeats] = useState("");
-  const [amount, setAmount] = useState(() => {
+  const [amount, setAmount] = useState("");
+
+  useEffect(() => {
     if (!link) {
-      return "";
+      setSelectedCurrency("sBTC");
+      setAmount("");
+      return;
     }
-    const defaults = defaultAmountConfig(availableCurrencies[0] ?? link.currency);
-    return String(link.defaultAmount ?? defaults.defaultAmount);
-  });
-  const amountStep = link?.acceptedCurrencies?.length
-    ? defaultAmountConfig(selectedCurrency).amountStep
-    : link?.amountStep ?? defaultAmountConfig(link?.currency ?? "sBTC").amountStep;
+
+    const initialCurrency = (availableCurrencies[0] ?? link.currency ?? "sBTC") as Currency;
+    const defaults = defaultAmountConfig(initialCurrency);
+    setSelectedCurrency(initialCurrency);
+    setAmount(String(link.defaultAmount ?? defaults.defaultAmount));
+  }, [link?.slug]);
+
+  const amountStep = link?.amountStep ?? defaultAmountConfig(selectedCurrency).amountStep;
 
   const pageSummary = useMemo(() => {
     if (!link) {
@@ -62,6 +156,11 @@ export default function PublicPaymentLinkPage({
     if (link.mode === "subscription") {
       return "Capture a company name and billing email, then create the subscriber record for the selected plan.";
     }
+    if (link.source === "remote") {
+      return link.isUniversal
+        ? "Permanent universal payment route. Customers can choose the asset and amount here."
+        : "Public MultiPay route.";
+    }
     return link.description || "Choose an asset, adjust the amount, generate a fresh invoice, and continue into hosted checkout.";
   }, [link]);
 
@@ -72,7 +171,9 @@ export default function PublicPaymentLinkPage({
           <GlassCard>
             <div className="text-3xl font-semibold text-white">Payment link not found</div>
             <div className="mt-3 text-sm text-white/60">
-              The merchant has not created this public route in the current demo workspace.
+              {loadingRemote
+                ? "Looking up the public route."
+                : "This public payment route could not be found."}
             </div>
           </GlassCard>
         </div>
@@ -84,6 +185,7 @@ export default function PublicPaymentLinkPage({
     if (!link) {
       return;
     }
+
     const defaults = defaultAmountConfig(selectedCurrency);
     const base = Number(amount || link.defaultAmount || defaults.defaultAmount || 0);
     setAmount(String(normalizeAmount(base, amountStep, delta)));
@@ -93,8 +195,13 @@ export default function PublicPaymentLinkPage({
     if (!link) {
       return;
     }
+
     if (link.mode === "invoice" && link.invoiceId) {
       router.push(`/pay/${link.invoiceId}`);
+      return;
+    }
+
+    if (link.source === "remote") {
       return;
     }
 
@@ -128,7 +235,9 @@ export default function PublicPaymentLinkPage({
       <div className="mx-auto grid w-full max-w-5xl gap-8 lg:grid-cols-[1.05fr_0.95fr]">
         <div className="space-y-6">
           <div>
-            <div className="text-xs uppercase tracking-[0.35em] text-white/40">Hosted MultiPay route</div>
+            <div className="text-xs uppercase tracking-[0.35em] text-white/40">
+              {link.isUniversal ? "Hosted universal QR route" : "Hosted payment route"}
+            </div>
             <h1 className="mt-3 text-4xl font-semibold text-white">{link.title}</h1>
             <p className="mt-3 max-w-2xl text-sm text-white/60">{pageSummary}</p>
           </div>
@@ -136,11 +245,16 @@ export default function PublicPaymentLinkPage({
           <GlassCard className="border border-white/20">
             <div className="grid gap-3">
               <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/75">
-                Merchant: {state.merchant.businessName}
+                Merchant: {link.merchantName}
               </div>
               <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/75">
-                Assets: {(link.acceptedCurrencies ?? [link.currency]).join(", ")}
+                Assets: {availableCurrencies.join(", ")}
               </div>
+              {link.settlementWallet ? (
+                <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/75">
+                  Settlement wallet: {truncateAddress(link.settlementWallet)}
+                </div>
+              ) : null}
               {linkedPlan ? (
                 <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/75">
                   Plan: {linkedPlan.name} · {formatCurrencyAmount(linkedPlan.amount, linkedPlan.currency)}
@@ -250,14 +364,23 @@ export default function PublicPaymentLinkPage({
               </>
             ) : null}
 
+            {link.source === "remote" ? (
+              <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-sm text-white/70">
+                This public route is live and correctly branded, but automated invoice generation from remote public payment links is the next integration step.
+              </div>
+            ) : null}
+
             <button
               onClick={handleContinue}
-              className="w-full rounded-full border border-white/20 bg-white px-5 py-3 text-sm font-semibold text-black"
+              disabled={link.source === "remote"}
+              className="w-full rounded-full border border-white/20 bg-white px-5 py-3 text-sm font-semibold text-black disabled:cursor-not-allowed disabled:opacity-50"
             >
               {link.mode === "subscription"
                 ? "Start subscription"
                 : link.mode === "multipay"
-                  ? "Generate invoice"
+                  ? link.source === "remote"
+                    ? "Public payment generation coming next"
+                    : "Generate invoice"
                   : "Open invoice"}
             </button>
 

@@ -24,10 +24,14 @@ type RemoteInvoice = {
 
 export default function InvoicesPage() {
   const { state } = useDemo();
-  const connectedAddress = getConnectedWalletAddress();
+  const [connectedAddress, setConnectedAddress] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
   const [query, setQuery] = useState("");
   const [remoteInvoices, setRemoteInvoices] = useState<RemoteInvoice[]>([]);
+
+  useEffect(() => {
+    setConnectedAddress(getConnectedWalletAddress());
+  }, []);
 
   useEffect(() => {
     if (!connectedAddress) {
