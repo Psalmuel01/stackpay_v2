@@ -1,20 +1,17 @@
-;; StackPay Payment Processor (Iteration: Balance + Withdrawals)
+;; StackPay Processor
+;; Compact balance ledger for invoice payments and merchant withdrawals.
 
 (use-trait invoice-trait .architecture.invoice-trait)
 
 (define-trait sip-010-trait (
-    (transfer (uint principal principal (optional (buff 34))) (response bool uint))
+  (transfer (uint principal principal (optional (buff 34))) (response bool uint))
 ))
 
-;; constants
 (define-constant ERR_UNAUTHORIZED (err u400))
 (define-constant ERR_INVALID_TOKEN (err u401))
 (define-constant ERR_PAYMENT_FAILED (err u402))
 (define-constant ERR_INVALID_AMOUNT (err u405))
 (define-constant ERR_INVALID_INPUT (err u407))
-(define-constant ERR_INACTIVE_SUBSCRIPTION (err u410))
-(define-constant ERR_TOO_EARLY (err u411))
-(define-constant ERR_MAX_PAYMENTS_EXCEEDED (err u412))
 (define-constant ERR_INSUFFICIENT_BALANCE (err u413))
 (define-constant ERR_ASSET_GUARD (err u414))
 
@@ -22,214 +19,173 @@
 (define-constant CURRENCY_SBTC "sBTC")
 (define-constant CURRENCY_USDC "USDCx")
 
-;; data-vars
-(define-data-var platform-fee-bps uint u100) ;; in basis points (100 = 1%)
-
-;; data-maps
 (define-map balances
-    {
-        merchant: principal,
-        currency: (string-ascii 10),
-    }
-    { amount: uint }
+  {
+    merchant: principal,
+    currency: (string-ascii 10),
+  }
+  { amount: uint }
 )
 
-(define-map supported-tokens
-    { currency: (string-ascii 10) }
-    {
-        token-contract: (optional principal),
-        is-active: bool,
-    }
-)
-
-(map-set supported-tokens { currency: CURRENCY_STX } {
-    token-contract: none,
-    is-active: true,
-})
-(map-set supported-tokens { currency: CURRENCY_SBTC } {
-    token-contract: (some 'ST1F7QA2MDF17S807EPA36TSS8AMEFY4KA9TVGWXT.sbtc-token),
-    is-active: true,
-})
-(map-set supported-tokens { currency: CURRENCY_USDC } {
-    token-contract: (some 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.usdcx),
-    is-active: true,
-})
-
-;; private functions
 (define-private (credit-balance
-        (merchant principal)
-        (currency (string-ascii 10))
-        (amt uint)
-    )
-    (let ((cur (default-to { amount: u0 }
-            (map-get? balances {
-                merchant: merchant,
-                currency: currency,
-            })
-        )))
-        (map-set balances {
-            merchant: merchant,
-            currency: currency,
-        } { amount: (+ (get amount cur) amt) }
-        )
-    )
+    (merchant principal)
+    (currency (string-ascii 10))
+    (amount uint)
+  )
+  (let ((current
+      (default-to
+        { amount: u0 }
+        (map-get? balances {
+          merchant: merchant,
+          currency: currency,
+        })
+      )
+    ))
+    (map-set balances {
+      merchant: merchant,
+      currency: currency,
+    } {
+      amount: (+ (get amount current) amount)
+    })
+  )
 )
 
 (define-private (debit-balance
-        (merchant principal)
-        (currency (string-ascii 10))
-        (amt uint)
-    )
-    (let ((cur (unwrap!
-            (map-get? balances {
-                merchant: merchant,
-                currency: currency,
-            })
-            ERR_INSUFFICIENT_BALANCE
-        )))
-        (asserts! (>= (get amount cur) amt) ERR_INSUFFICIENT_BALANCE)
-        (map-set balances {
-            merchant: merchant,
-            currency: currency,
-        } { amount: (- (get amount cur) amt) }
-        )
-        (ok true)
-    )
+    (merchant principal)
+    (currency (string-ascii 10))
+    (amount uint)
+  )
+  (let ((current (unwrap!
+      (map-get? balances {
+        merchant: merchant,
+        currency: currency,
+      })
+      ERR_INSUFFICIENT_BALANCE
+    )))
+    (asserts! (>= (get amount current) amount) ERR_INSUFFICIENT_BALANCE)
+    (map-set balances {
+      merchant: merchant,
+      currency: currency,
+    } {
+      amount: (- (get amount current) amount)
+    })
+    (ok true)
+  )
 )
 
-;; public functions
+(define-private (supported-token-contract (currency (string-ascii 10)))
+  (if (is-eq currency CURRENCY_SBTC)
+    (some 'ST1F7QA2MDF17S807EPA36TSS8AMEFY4KA9TVGWXT.sbtc-token)
+    (if (is-eq currency CURRENCY_USDC)
+      (some 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.usdcx)
+      none
+    )
+  )
+)
 
 (define-public (process-stx-payment
-        (invoice-id (string-ascii 85))
-        (amount uint)
-        (tx-id (buff 32))
+    (invoice-id (string-ascii 85))
+    (amount uint)
+    (tx-id (buff 32))
+  )
+  (let (
+      (payer tx-sender)
+      (invoice (unwrap!
+        (unwrap! (contract-call? .architecture get-invoice invoice-id) ERR_PAYMENT_FAILED)
+        ERR_PAYMENT_FAILED
+      ))
+      (merchant (get merchant invoice))
     )
-    (let (
-            (payer tx-sender)
-            (inv (unwrap! (contract-call? .architecture get-invoice invoice-id)
-                ERR_PAYMENT_FAILED
-            ))
-            (merchant (get merchant inv))
-        )
-        (asserts! (is-eq (get currency inv) CURRENCY_STX) ERR_INVALID_INPUT)
-        (asserts! (> amount u0) ERR_INVALID_AMOUNT)
-        (asserts! (is-eq amount (get amount inv)) ERR_INVALID_AMOUNT)
-        ;; funds deposited to contract, not merchant
-        (try! (stx-transfer? amount payer current-contract))
-        (credit-balance merchant CURRENCY_STX amount)
-        (try! (contract-call? .architecture process-payment invoice-id payer amount
-            tx-id
-        ))
-        (ok true)
-    )
+    (asserts! (is-eq (get currency invoice) CURRENCY_STX) ERR_INVALID_INPUT)
+    (asserts! (> amount u0) ERR_INVALID_AMOUNT)
+    (asserts! (is-eq amount (get amount invoice)) ERR_INVALID_AMOUNT)
+    (try! (stx-transfer? amount payer current-contract))
+    (credit-balance merchant CURRENCY_STX amount)
+    (try! (contract-call? .architecture process-payment invoice-id payer amount tx-id))
+    (ok true)
+  )
 )
 
 (define-public (process-sip-010-payment
-        (invoice-id (string-ascii 85))
-        (amount uint)
-        (tx-id (buff 32))
-        (token <sip-010-trait>)
+    (invoice-id (string-ascii 85))
+    (amount uint)
+    (tx-id (buff 32))
+    (token <sip-010-trait>)
+  )
+  (let (
+      (payer tx-sender)
+      (invoice (unwrap!
+        (unwrap! (contract-call? .architecture get-invoice invoice-id) ERR_PAYMENT_FAILED)
+        ERR_PAYMENT_FAILED
+      ))
+      (currency (get currency invoice))
+      (merchant (get merchant invoice))
+      (expected-token (unwrap! (supported-token-contract currency) ERR_INVALID_TOKEN))
     )
-    (let (
-            (payer tx-sender)
-            (inv (unwrap! (contract-call? .architecture get-invoice invoice-id)
-                ERR_PAYMENT_FAILED
-            ))
-            (currency (get currency inv))
-            (merchant (get merchant inv))
-            ;; dynamic lookup based on invoice currency
-            (info (unwrap! (map-get? supported-tokens { currency: currency })
-                ERR_INVALID_TOKEN
-            ))
-            (reg (unwrap! (get token-contract info) ERR_INVALID_TOKEN))
-        )
-        ;; ensure invoice currency matches the token we looked up
-        (asserts! (or
-            (is-eq currency CURRENCY_SBTC)
-            (is-eq currency CURRENCY_USDC)
-        ) ERR_INVALID_INPUT)
-        (asserts! (get is-active info) ERR_INVALID_TOKEN)
-
-        ;; ensure the passed token trait matches our registry
-        (asserts! (is-eq reg (contract-of token)) ERR_INVALID_TOKEN)
-        (asserts! (> amount u0) ERR_INVALID_AMOUNT)
-        (asserts! (is-eq amount (get amount inv)) ERR_INVALID_AMOUNT)
-
-        ;; transfer to contract
-        (try! (contract-call? token transfer amount payer current-contract none))
-        (credit-balance merchant currency amount)
-        (try! (contract-call? .architecture process-payment invoice-id payer amount
-            tx-id
-        ))
-        (ok true)
+    (asserts!
+      (or
+        (is-eq currency CURRENCY_SBTC)
+        (is-eq currency CURRENCY_USDC)
+      )
+      ERR_INVALID_INPUT
     )
+    (asserts! (is-eq expected-token (contract-of token)) ERR_INVALID_TOKEN)
+    (asserts! (> amount u0) ERR_INVALID_AMOUNT)
+    (asserts! (is-eq amount (get amount invoice)) ERR_INVALID_AMOUNT)
+    (try! (contract-call? token transfer amount payer current-contract none))
+    (credit-balance merchant currency amount)
+    (try! (contract-call? .architecture process-payment invoice-id payer amount tx-id))
+    (ok true)
+  )
 )
 
-(define-public (withdraw
-        (currency (string-ascii 10))
-        (amount uint)
-        (token <sip-010-trait>)
+(define-public (withdraw-stx (amount uint))
+  (let ((merchant tx-sender))
+    (asserts! (> amount u0) ERR_INVALID_AMOUNT)
+    (try! (debit-balance merchant CURRENCY_STX amount))
+    (unwrap!
+      (as-contract? ((with-stx amount))
+        (unwrap! (stx-transfer? amount current-contract merchant) ERR_PAYMENT_FAILED)
+        true
+      )
+      ERR_ASSET_GUARD
     )
-    (let (
-            (merchant tx-sender)
-            (bal (unwrap!
-                (map-get? balances {
-                    merchant: merchant,
-                    currency: currency,
-                })
-                ERR_INSUFFICIENT_BALANCE
-            ))
-            (fee-bps (var-get platform-fee-bps))
-            (fee (/ (* amount fee-bps) u10000))
-            (payout (- amount fee))
-        )
-        (asserts! (> amount u0) ERR_INVALID_AMOUNT)
-        (asserts! (>= (get amount bal) amount) ERR_INSUFFICIENT_BALANCE)
-        (try! (debit-balance merchant currency amount))
-        (if (is-eq currency CURRENCY_STX)
-            (unwrap!
-                (as-contract? ((with-stx payout))
-                    (unwrap! (stx-transfer? payout current-contract merchant) ERR_PAYMENT_FAILED)
-                    true
-                )
-                ERR_ASSET_GUARD
-            )
-            (let (
-                    (info (unwrap!
-                        (map-get? supported-tokens { currency: currency })
-                        ERR_INVALID_TOKEN
-                    ))
-                    (reg (unwrap! (get token-contract info) ERR_INVALID_TOKEN))
-                )
-                (asserts! (get is-active info) ERR_INVALID_TOKEN)
-                (asserts! (is-eq reg (contract-of token)) ERR_INVALID_TOKEN)
-                (unwrap!
-                    (as-contract? ((with-ft reg "*" payout))
-                        (unwrap!
-                            (contract-call? token transfer payout current-contract merchant none)
-                            ERR_PAYMENT_FAILED
-                        )
-                        true
-                    )
-                    ERR_ASSET_GUARD
-                )
-            )
-        )
-        (ok {
-            withdrawn: payout,
-            fee: fee,
-        })
-    )
+    (ok { withdrawn: amount })
+  )
 )
 
-;; read-only
+(define-public (withdraw-token
+    (currency (string-ascii 10))
+    (amount uint)
+    (token <sip-010-trait>)
+  )
+  (let (
+      (merchant tx-sender)
+      (expected-token (unwrap! (supported-token-contract currency) ERR_INVALID_TOKEN))
+    )
+    (asserts! (> amount u0) ERR_INVALID_AMOUNT)
+    (asserts! (is-eq expected-token (contract-of token)) ERR_INVALID_TOKEN)
+    (try! (debit-balance merchant currency amount))
+    (unwrap!
+      (as-contract? ((with-ft expected-token "*" amount))
+        (unwrap!
+          (contract-call? token transfer amount current-contract merchant none)
+          ERR_PAYMENT_FAILED
+        )
+        true
+      )
+      ERR_ASSET_GUARD
+    )
+    (ok { withdrawn: amount })
+  )
+)
 
 (define-read-only (get-balance
-        (merchant principal)
-        (currency (string-ascii 10))
-    )
-    (map-get? balances {
-        merchant: merchant,
-        currency: currency,
-    })
+    (merchant principal)
+    (currency (string-ascii 10))
+  )
+  (map-get? balances {
+    merchant: merchant,
+    currency: currency,
+  })
 )
