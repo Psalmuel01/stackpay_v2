@@ -20,9 +20,23 @@ export function sendJson(response, statusCode, payload) {
   response.end(JSON.stringify(payload, null, 2));
 }
 
-export function sendNotFound(response, path) {
-  sendJson(response, 404, {
-    error: "not_found",
-    message: `No route is registered for ${path}`,
+export function sendError(response, statusCode, error, message, details) {
+  sendJson(response, statusCode, {
+    error,
+    message,
+    ...(details ? { details } : {}),
   });
+}
+
+export function sendMethodNotAllowed(response, method, path) {
+  sendError(
+    response,
+    405,
+    "method_not_allowed",
+    `${method} is not allowed for ${path}`
+  );
+}
+
+export function sendNotFound(response, path) {
+  sendError(response, 404, "not_found", `No route is registered for ${path}`);
 }

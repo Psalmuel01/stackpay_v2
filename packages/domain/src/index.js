@@ -32,14 +32,14 @@ export const invoiceTypes = [
     description: "One-time hosted invoice with fixed amount and expiration.",
   },
   {
-    id: "subscription",
-    label: "Subscription",
-    description: "Recurring plan that issues renewal invoices on a schedule.",
+    id: "multipay",
+    label: "MultiPay",
+    description: "Reusable public payment link that can collect multiple payments over time.",
   },
   {
-    id: "donation",
-    label: "Donation",
-    description: "Reusable public payment surface with merchant-selected amounts.",
+    id: "subscription",
+    label: "Subscription renewal",
+    description: "Renewal invoice issued from a subscription plan lifecycle.",
   },
 ];
 
@@ -95,7 +95,7 @@ export const contractBacklog = [
   {
     id: "invoice-hosted-reference",
     title: "Hosted payment references",
-    reason: "Map public payment links and QR-friendly slugs to invoice ids or reusable collection surfaces.",
+    reason: "Map public payment links, MultiPay routes, and universal QR slugs to invoice ids or reusable collection surfaces.",
   },
   {
     id: "subscription-primitives",

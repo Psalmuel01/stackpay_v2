@@ -16,6 +16,7 @@
     "lint:web": "npm run -w @stackpay/web lint",
     "dev:api": "npm run -w @stackpay/api dev",
     "start:api": "npm run -w @stackpay/api start",
+    "migrate:api": "npm run -w @stackpay/api migrate",
     "test:contracts": "npm run -w @stackpay/contracts test"
   }
 }

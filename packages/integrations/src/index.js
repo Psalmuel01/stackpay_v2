@@ -22,11 +22,16 @@ export const integrationLayers = [
 ];
 
 export const apiResources = [
-  { method: "POST", path: "/v1/invoices", purpose: "Create invoice and hosted payment link." },
-  { method: "GET", path: "/v1/invoices", purpose: "List invoices for dashboard and explorer surfaces." },
-  { method: "POST", path: "/v1/subscriptions", purpose: "Create subscription plans and renewal policies." },
-  { method: "GET", path: "/v1/subscriptions", purpose: "List plans and subscriber states." },
-  { method: "GET", path: "/v1/settlements", purpose: "List pending and completed settlement runs." },
+  { method: "POST", path: "/v1/merchants", purpose: "Create a merchant profile with settlement and webhook defaults." },
+  { method: "GET", path: "/v1/invoices", purpose: "List invoices for dashboard, hosted checkout, and back-office reconciliation." },
+  { method: "POST", path: "/v1/invoices", purpose: "Create a standard or subscription-origin invoice record." },
+  { method: "GET", path: "/v1/payment-links", purpose: "List reusable MultiPay, invoice, and subscription payment links." },
+  { method: "POST", path: "/v1/payment-links", purpose: "Create merchant-facing payment links for invoice, MultiPay, or subscription flows." },
+  { method: "POST", path: "/v1/qr-links/universal", purpose: "Generate or rotate the merchant's permanent universal QR route." },
+  { method: "GET", path: "/v1/receipts", purpose: "List indexed receipt records tied to settled invoice payments." },
+  { method: "GET", path: "/v1/subscription-plans", purpose: "List recurring plans that generate renewal invoices." },
+  { method: "POST", path: "/v1/subscriptions", purpose: "Create subscriber records against a plan." },
+  { method: "GET", path: "/v1/settlement-runs", purpose: "List pending and completed settlement executions." },
   { method: "POST", path: "/v1/webhooks/test", purpose: "Validate webhook target configuration." },
 ];
 
