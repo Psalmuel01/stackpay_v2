@@ -45,7 +45,7 @@ function getEffectiveStatus(invoice: RemoteInvoice | null, nowMs: number) {
 function getProcessorContractId() {
   const architectureContractId =
     process.env.NEXT_PUBLIC_STACKPAY_ARCHITECTURE_CONTRACT_ID ??
-    "ST000000000000000000002AMW42H.architecture";
+    "ST13J1C3K69H3EDG2SVJ21SQ6GXD6A6F862QCK16D.architecture";
   const [address] = architectureContractId.split(".");
   return process.env.NEXT_PUBLIC_STACKPAY_PROCESSOR_CONTRACT_ID ?? `${address}.processor`;
 }

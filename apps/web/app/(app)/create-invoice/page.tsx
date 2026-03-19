@@ -35,7 +35,7 @@ const flows: Array<{ id: CreateFlow; label: string; summary: string }> = [
   },
 ];
 
-const currencies: Currency[] = ["sBTC", "STX", "USDCx"];
+const currencies: Currency[] = ["STX", "sBTC", "USDCx"];
 const expirations = [
   { label: "1h", hours: 1 },
   { label: "24h", hours: 24 },
@@ -62,11 +62,11 @@ function truncateAddress(address: string) {
 
 export default function CreateInvoicePage() {
   const [flow, setFlow] = useState<CreateFlow>("standard");
-  const [currency, setCurrency] = useState<Currency>("sBTC");
-  const [amount, setAmount] = useState("");
+  const [currency, setCurrency] = useState<Currency>("STX");
+  const [amount, setAmount] = useState(Number);
   const [expiration, setExpiration] = useState<ExpirationOption>(24);
-  const [customExpirationValue, setCustomExpirationValue] = useState("48");
-  const [customExpirationUnit, setCustomExpirationUnit] = useState<"minutes" | "hours" | "days">("hours");
+  const [customExpirationValue, setCustomExpirationValue] = useState("");
+  const [customExpirationUnit, setCustomExpirationUnit] = useState<"minutes" | "hours" | "days">("minutes");
   const [customer, setCustomer] = useState("");
   const [email, setEmail] = useState("");
   const [description, setDescription] = useState("");
@@ -460,7 +460,7 @@ export default function CreateInvoicePage() {
                   <input
                     className="w-full bg-transparent text-sm text-white/80 outline-none"
                     value={amount}
-                    onChange={(event) => setAmount(event.target.value)}
+                    onChange={(event) => setAmount(Number(event.target.value))}
                     placeholder={flow === "multipay" ? "Starting checkout amount" : "Invoice amount"}
                   />
                   <span className="text-xs text-white/55">{currency}</span>
@@ -533,7 +533,7 @@ export default function CreateInvoicePage() {
                           className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/80 outline-none"
                           value={customExpirationValue}
                           onChange={(event) => setCustomExpirationValue(event.target.value)}
-                          placeholder="48"
+                          placeholder="5"
                         />
                       </div>
                       <div className="mt-3 max-w-xs">
