@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { showConnect } from "@stacks/connect";
-import { getConnectedWalletAddress, userSession } from "@/lib/stacks";
+import { getAppDetails, getConnectedWalletAddress, userSession } from "@/lib/stacks";
 import { useDemo } from "@/components/app/DemoProvider";
 
 function truncateAddress(address: string) {
@@ -32,22 +32,13 @@ useEffect(() => {
     setAddress(getConnectedWalletAddress());
   }, []);
 
-  const appDetails = useMemo(
-    () => ({
-      name: process.env.NEXT_PUBLIC_APP_NAME ?? "StackPay",
-      icon: process.env.NEXT_PUBLIC_APP_ICON ?? "",
-      url: process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000",
-    }),
-    []
-  );
-
   useEffect(() => {
     setAddress(getConnectedWalletAddress());
   }, [connected]);
 
   const handleConnect = () => {
     showConnect({
-      appDetails,
+      appDetails: getAppDetails(),
       userSession,
       onFinish: () => {
         setConnected(true);

@@ -24,6 +24,30 @@ export const stacksNetwork =
     ? new StacksMainnet()
     : new StacksTestnet();
 
+function getAppBaseUrl() {
+  if (process.env.NEXT_PUBLIC_APP_URL) {
+    return process.env.NEXT_PUBLIC_APP_URL;
+  }
+
+  if (typeof window !== "undefined" && window.location.origin) {
+    return window.location.origin;
+  }
+
+  return "http://localhost:3000";
+}
+
+export function getAppDetails() {
+  const baseUrl = getAppBaseUrl().replace(/\/$/, "");
+  const iconPath = process.env.NEXT_PUBLIC_APP_ICON ?? "/stackpay-icon.svg";
+  const iconUrl = /^https?:\/\//.test(iconPath) ? iconPath : `${baseUrl}${iconPath.startsWith("/") ? iconPath : `/${iconPath}`}`;
+
+  return {
+    name: process.env.NEXT_PUBLIC_APP_NAME ?? "StackPay",
+    icon: iconUrl,
+    url: baseUrl,
+  };
+}
+
 export function getConnectedWalletAddress() {
   if (!userSession.isUserSignedIn()) {
     return null;
