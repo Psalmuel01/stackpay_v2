@@ -13,7 +13,7 @@ function getCurrentTime(sender: string) {
 }
 
 describe("architecture", () => {
-  it("configures merchant profiles and creates hosted payment links", () => {
+  it("configures merchant profiles and creates invoice payment links", () => {
     const setup = simnet.mineBlock([
       tx.callPublicFn("architecture", "register-merchant", [noneCV()], merchant),
       tx.callPublicFn(
@@ -49,13 +49,12 @@ describe("architecture", () => {
 
     const createLink = simnet.callPublicFn(
       "architecture",
-      "create-payment-link",
+      "create-invoice-payment-link",
       [
         stringAsciiCV("studio-noon-april"),
-        stringAsciiCV("invoice"),
-        Cl.some(Cl.stringAscii(invoiceId)),
-        noneCV(),
+        stringAsciiCV(invoiceId),
         stringUtf8CV("April invoice checkout"),
+        stringUtf8CV("One-time checkout for April"),
       ],
       merchant
     );
@@ -94,8 +93,18 @@ describe("architecture", () => {
         "invoice-id": Cl.some(Cl.stringAscii(invoiceId)),
         "plan-id": Cl.none(),
         title: Cl.stringUtf8("April invoice checkout"),
+        description: Cl.stringUtf8("One-time checkout for April"),
+        "default-currency": Cl.some(Cl.stringAscii("STX")),
+        "default-amount": Cl.some(Cl.uint(1200)),
+        "amount-step": Cl.none(),
+        "allow-custom-amount": Cl.bool(false),
+        "accepts-stx": Cl.bool(true),
+        "accepts-sbtc": Cl.bool(false),
+        "accepts-usdcx": Cl.bool(false),
+        "is-universal": Cl.bool(false),
         "is-active": Cl.bool(true),
         "created-at": Cl.uint(linkCreatedAt),
+        "updated-at": Cl.uint(linkCreatedAt),
       })
     );
   });
@@ -243,9 +252,26 @@ describe("architecture", () => {
     );
   });
 
-  it("creates subscription plans, subscriber records, and settlement policies", () => {
+  it("creates multipay links, universal QR routes, subscriptions, and settlement policies", () => {
     const setup = simnet.mineBlock([
       tx.callPublicFn("architecture", "register-merchant", [noneCV()], merchant),
+      tx.callPublicFn(
+        "architecture",
+        "create-multipay-link",
+        [
+          stringAsciiCV("studio-noon-support"),
+          stringUtf8CV("Support Studio Noon"),
+          stringUtf8CV("Reusable MultiPay link for community support."),
+          Cl.some(Cl.stringAscii("sBTC")),
+          Cl.some(Cl.uint(25)),
+          Cl.some(Cl.uint(5)),
+          Cl.bool(true),
+          Cl.bool(false),
+          Cl.bool(true),
+          Cl.bool(false),
+        ],
+        merchant
+      ),
       tx.callPublicFn(
         "architecture",
         "create-subscription-plan",
@@ -260,9 +286,27 @@ describe("architecture", () => {
       ),
     ]);
 
-    const planId = cvToValue(setup[1].result.value) as string;
+    const multipayId = cvToValue(setup[1].result.value) as string;
+    expect(setup[1].result).toBeOk(Cl.stringAscii(multipayId));
+    const multipayCreatedAt = getCurrentTime(merchant);
+
+    const planId = cvToValue(setup[2].result.value) as string;
     const planCreatedAt = getCurrentTime(merchant);
     const firstBillingAt = getCurrentTime(merchant) + 86_400n;
+
+    const universalLinkResult = simnet.callPublicFn(
+      "architecture",
+      "create-universal-qr-link",
+      [
+        stringAsciiCV("studio-noon-pay"),
+        stringUtf8CV("Studio Noon QR"),
+        stringUtf8CV("Permanent universal QR route for daily payments."),
+      ],
+      merchant
+    );
+    const universalLinkId = cvToValue(universalLinkResult.result.value) as string;
+    expect(universalLinkResult.result).toBeOk(Cl.stringAscii(universalLinkId));
+    const universalCreatedAt = getCurrentTime(merchant);
 
     const subscriptionResult = simnet.callPublicFn(
       "architecture",
@@ -278,6 +322,21 @@ describe("architecture", () => {
     expect(subscriptionResult.result).toBeOk(Cl.stringAscii(subscriptionId));
 
     const subscriptionCreatedAt = getCurrentTime(merchant);
+
+    const subscriptionLinkResult = simnet.callPublicFn(
+      "architecture",
+      "create-subscription-payment-link",
+      [
+        stringAsciiCV("studio-noon-pro"),
+        stringAsciiCV(planId),
+        stringUtf8CV("Studio Noon Pro"),
+        stringUtf8CV("Subscription checkout for the Pro Annual plan."),
+      ],
+      merchant
+    );
+    const subscriptionLinkId = cvToValue(subscriptionLinkResult.result.value) as string;
+    expect(subscriptionLinkResult.result).toBeOk(Cl.stringAscii(subscriptionLinkId));
+    const subscriptionLinkCreatedAt = getCurrentTime(merchant);
 
     const policyResult = simnet.callPublicFn(
       "architecture",
@@ -296,6 +355,64 @@ describe("architecture", () => {
     expect(policyResult.result).toBeOk(Cl.stringAscii(policyId));
 
     const policyCreatedAt = getCurrentTime(merchant);
+
+    const multipay = simnet.callReadOnlyFn(
+      "architecture",
+      "get-payment-link",
+      [stringAsciiCV(multipayId)],
+      merchant
+    );
+    expect(multipay.result).toBeSome(
+      Cl.tuple({
+        merchant: Cl.principal(merchant),
+        slug: Cl.stringAscii("studio-noon-support"),
+        kind: Cl.stringAscii("multipay"),
+        "invoice-id": Cl.none(),
+        "plan-id": Cl.none(),
+        title: Cl.stringUtf8("Support Studio Noon"),
+        description: Cl.stringUtf8("Reusable MultiPay link for community support."),
+        "default-currency": Cl.some(Cl.stringAscii("sBTC")),
+        "default-amount": Cl.some(Cl.uint(25)),
+        "amount-step": Cl.some(Cl.uint(5)),
+        "allow-custom-amount": Cl.bool(true),
+        "accepts-stx": Cl.bool(false),
+        "accepts-sbtc": Cl.bool(true),
+        "accepts-usdcx": Cl.bool(false),
+        "is-universal": Cl.bool(false),
+        "is-active": Cl.bool(true),
+        "created-at": Cl.uint(multipayCreatedAt),
+        "updated-at": Cl.uint(multipayCreatedAt),
+      })
+    );
+
+    const universalLink = simnet.callReadOnlyFn(
+      "architecture",
+      "get-active-universal-link",
+      [Cl.principal(merchant)],
+      merchant
+    );
+    expect(universalLink.result).toBeSome(
+      Cl.tuple({
+        merchant: Cl.principal(merchant),
+        slug: Cl.stringAscii("studio-noon-pay"),
+        kind: Cl.stringAscii("multipay"),
+        "invoice-id": Cl.none(),
+        "plan-id": Cl.none(),
+        title: Cl.stringUtf8("Studio Noon QR"),
+        description: Cl.stringUtf8("Permanent universal QR route for daily payments."),
+        "default-currency": Cl.none(),
+        "default-amount": Cl.none(),
+        "amount-step": Cl.none(),
+        "allow-custom-amount": Cl.bool(true),
+        "accepts-stx": Cl.bool(true),
+        "accepts-sbtc": Cl.bool(true),
+        "accepts-usdcx": Cl.bool(true),
+        "is-universal": Cl.bool(true),
+        "is-active": Cl.bool(true),
+        "created-at": Cl.uint(universalCreatedAt),
+        "updated-at": Cl.uint(universalCreatedAt),
+      })
+    );
 
     const plan = simnet.callReadOnlyFn(
       "architecture",
@@ -331,6 +448,35 @@ describe("architecture", () => {
         "next-billing-at": Cl.uint(firstBillingAt),
         "last-invoice-id": Cl.none(),
         "created-at": Cl.uint(subscriptionCreatedAt),
+      })
+    );
+
+    const subscriptionLink = simnet.callReadOnlyFn(
+      "architecture",
+      "get-payment-link",
+      [stringAsciiCV(subscriptionLinkId)],
+      merchant
+    );
+    expect(subscriptionLink.result).toBeSome(
+      Cl.tuple({
+        merchant: Cl.principal(merchant),
+        slug: Cl.stringAscii("studio-noon-pro"),
+        kind: Cl.stringAscii("subscription"),
+        "invoice-id": Cl.none(),
+        "plan-id": Cl.some(Cl.stringAscii(planId)),
+        title: Cl.stringUtf8("Studio Noon Pro"),
+        description: Cl.stringUtf8("Subscription checkout for the Pro Annual plan."),
+        "default-currency": Cl.some(Cl.stringAscii("USDCx")),
+        "default-amount": Cl.some(Cl.uint(120)),
+        "amount-step": Cl.none(),
+        "allow-custom-amount": Cl.bool(false),
+        "accepts-stx": Cl.bool(false),
+        "accepts-sbtc": Cl.bool(false),
+        "accepts-usdcx": Cl.bool(true),
+        "is-universal": Cl.bool(false),
+        "is-active": Cl.bool(true),
+        "created-at": Cl.uint(subscriptionLinkCreatedAt),
+        "updated-at": Cl.uint(subscriptionLinkCreatedAt),
       })
     );
 

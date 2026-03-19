@@ -61,7 +61,7 @@
 (define-constant SETTLEMENT_TRIGGER_SCHEDULED u1)
 
 (define-constant LINK_KIND_INVOICE "invoice")
-(define-constant LINK_KIND_DONATION "donation")
+(define-constant LINK_KIND_MULTIPAY "multipay")
 (define-constant LINK_KIND_SUBSCRIPTION "subscription")
 
 (define-constant CURRENCY_STX "STX")
@@ -97,6 +97,11 @@
 
 (define-map payment-link-index
   { index: uint }
+  { link-id: (string-ascii 85) }
+)
+
+(define-map merchant-universal-link
+  { merchant: principal }
   { link-id: (string-ascii 85) }
 )
 
@@ -182,8 +187,18 @@
     invoice-id: (optional (string-ascii 85)),
     plan-id: (optional (string-ascii 85)),
     title: (string-utf8 128),
+    description: (string-utf8 256),
+    default-currency: (optional (string-ascii 10)),
+    default-amount: (optional uint),
+    amount-step: (optional uint),
+    allow-custom-amount: bool,
+    accepts-stx: bool,
+    accepts-sbtc: bool,
+    accepts-usdcx: bool,
+    is-universal: bool,
     is-active: bool,
     created-at: uint,
+    updated-at: uint,
   }
 )
 
@@ -259,8 +274,33 @@
   (or
     (is-eq kind LINK_KIND_INVOICE)
     (or
-      (is-eq kind LINK_KIND_DONATION)
+      (is-eq kind LINK_KIND_MULTIPAY)
       (is-eq kind LINK_KIND_SUBSCRIPTION)
+    )
+  )
+)
+
+(define-private (accepted-currency-count
+    (accepts-stx bool)
+    (accepts-sbtc bool)
+    (accepts-usdcx bool)
+  )
+  (+ (if accepts-stx u1 u0)
+    (+ (if accepts-sbtc u1 u0) (if accepts-usdcx u1 u0))
+  )
+)
+
+(define-private (currency-enabled
+    (currency (string-ascii 10))
+    (accepts-stx bool)
+    (accepts-sbtc bool)
+    (accepts-usdcx bool)
+  )
+  (if (is-eq currency CURRENCY_STX)
+    accepts-stx
+    (if (is-eq currency CURRENCY_SBTC)
+      accepts-sbtc
+      (if (is-eq currency CURRENCY_USDC) accepts-usdcx false)
     )
   )
 )
@@ -335,6 +375,47 @@
       (concat "_" (int-to-ascii c))
     )
   )
+)
+
+(define-private (persist-payment-link
+    (link-id (string-ascii 85))
+    (slug (string-ascii 64))
+    (kind (string-ascii 16))
+    (invoice-id (optional (string-ascii 85)))
+    (plan-id (optional (string-ascii 85)))
+    (title (string-utf8 128))
+    (description (string-utf8 256))
+    (default-currency (optional (string-ascii 10)))
+    (default-amount (optional uint))
+    (amount-step (optional uint))
+    (allow-custom-amount bool)
+    (accepts-stx bool)
+    (accepts-sbtc bool)
+    (accepts-usdcx bool)
+    (is-universal bool)
+    (is-active bool)
+    (timestamp uint)
+  )
+  (map-set payment-links { link-id: link-id } {
+    merchant: tx-sender,
+    slug: slug,
+    kind: kind,
+    invoice-id: invoice-id,
+    plan-id: plan-id,
+    title: title,
+    description: description,
+    default-currency: default-currency,
+    default-amount: default-amount,
+    amount-step: amount-step,
+    allow-custom-amount: allow-custom-amount,
+    accepts-stx: accepts-stx,
+    accepts-sbtc: accepts-sbtc,
+    accepts-usdcx: accepts-usdcx,
+    is-universal: is-universal,
+    is-active: is-active,
+    created-at: timestamp,
+    updated-at: timestamp,
+  })
 )
 
 ;; public functions
@@ -484,55 +565,261 @@
   )
 )
 
-(define-public (create-payment-link
+(define-public (create-invoice-payment-link
     (slug (string-ascii 64))
-    (kind (string-ascii 16))
-    (invoice-id (optional (string-ascii 85)))
-    (plan-id (optional (string-ascii 85)))
+    (invoice-id (string-ascii 85))
     (title (string-utf8 128))
+    (description (string-utf8 256))
+  )
+  (let (
+      (merchant (unwrap! (map-get? merchants { merchant: tx-sender }) ERR_UNAUTHORIZED))
+      (invoice (unwrap! (map-get? invoices { invoice-id: invoice-id }) ERR_INVOICE_NOT_FOUND))
+      (link-id (new-payment-link-id))
+      (idx (var-get payment-link-total))
+      (now (current-time))
+    )
+    (asserts! (get is-active merchant) ERR_UNAUTHORIZED)
+    (asserts! (is-eq (get merchant invoice) tx-sender) ERR_UNAUTHORIZED)
+    (asserts! (is-none (map-get? payment-link-slugs { slug: slug })) ERR_DUPLICATE_SLUG)
+    (persist-payment-link
+      link-id
+      slug
+      LINK_KIND_INVOICE
+      (some invoice-id)
+      none
+      title
+      description
+      (some (get currency invoice))
+      (some (get amount invoice))
+      none
+      false
+      (is-eq (get currency invoice) CURRENCY_STX)
+      (is-eq (get currency invoice) CURRENCY_SBTC)
+      (is-eq (get currency invoice) CURRENCY_USDC)
+      false
+      true
+      now
+    )
+    (map-set payment-link-slugs { slug: slug } { link-id: link-id })
+    (map-set payment-link-index { index: idx } { link-id: link-id })
+    (var-set payment-link-total (+ idx u1))
+    (ok link-id)
+  )
+)
+
+(define-public (create-multipay-link
+    (slug (string-ascii 64))
+    (title (string-utf8 128))
+    (description (string-utf8 256))
+    (default-currency (optional (string-ascii 10)))
+    (default-amount (optional uint))
+    (amount-step (optional uint))
+    (allow-custom-amount bool)
+    (accepts-stx bool)
+    (accepts-sbtc bool)
+    (accepts-usdcx bool)
   )
   (let (
       (merchant (unwrap! (map-get? merchants { merchant: tx-sender }) ERR_UNAUTHORIZED))
       (link-id (new-payment-link-id))
       (idx (var-get payment-link-total))
+      (now (current-time))
     )
     (asserts! (get is-active merchant) ERR_UNAUTHORIZED)
-    (asserts! (valid-link-kind kind) ERR_INVALID_INPUT)
     (asserts! (is-none (map-get? payment-link-slugs { slug: slug })) ERR_DUPLICATE_SLUG)
-    (if (is-eq kind LINK_KIND_INVOICE)
-      (match invoice-id
-        linked-invoice
-          (let ((invoice (unwrap! (map-get? invoices { invoice-id: linked-invoice }) ERR_INVOICE_NOT_FOUND)))
-            (asserts! (is-eq (get merchant invoice) tx-sender) ERR_UNAUTHORIZED)
-          )
-        (asserts! false ERR_INVALID_INPUT)
-      )
+    (asserts! (> (accepted-currency-count accepts-stx accepts-sbtc accepts-usdcx) u0) ERR_INVALID_INPUT)
+    (match default-currency
+      currency
+        (begin
+          (asserts! (valid-currency currency) ERR_INVALID_INPUT)
+          (asserts! (currency-enabled currency accepts-stx accepts-sbtc accepts-usdcx) ERR_INVALID_INPUT)
+        )
       true
     )
-    (if (is-eq kind LINK_KIND_SUBSCRIPTION)
-      (match plan-id
-        linked-plan
-          (let ((plan (unwrap! (map-get? subscription-plans { plan-id: linked-plan }) ERR_PLAN_NOT_FOUND)))
-            (asserts! (is-eq (get merchant plan) tx-sender) ERR_UNAUTHORIZED)
-          )
-        (asserts! false ERR_INVALID_INPUT)
-      )
+    (match default-amount
+      amount (asserts! (> amount u0) ERR_INVALID_AMOUNT)
       true
     )
-    (map-set payment-links { link-id: link-id } {
-      merchant: tx-sender,
-      slug: slug,
-      kind: kind,
-      invoice-id: invoice-id,
-      plan-id: plan-id,
-      title: title,
-      is-active: true,
-      created-at: (current-time),
-    })
+    (match amount-step
+      step (asserts! (> step u0) ERR_INVALID_AMOUNT)
+      true
+    )
+    (persist-payment-link
+      link-id
+      slug
+      LINK_KIND_MULTIPAY
+      none
+      none
+      title
+      description
+      default-currency
+      default-amount
+      amount-step
+      allow-custom-amount
+      accepts-stx
+      accepts-sbtc
+      accepts-usdcx
+      false
+      true
+      now
+    )
     (map-set payment-link-slugs { slug: slug } { link-id: link-id })
     (map-set payment-link-index { index: idx } { link-id: link-id })
     (var-set payment-link-total (+ idx u1))
     (ok link-id)
+  )
+)
+
+(define-public (create-universal-qr-link
+    (slug (string-ascii 64))
+    (title (string-utf8 128))
+    (description (string-utf8 256))
+  )
+  (let (
+      (merchant (unwrap! (map-get? merchants { merchant: tx-sender }) ERR_UNAUTHORIZED))
+      (link-id (new-payment-link-id))
+      (idx (var-get payment-link-total))
+      (now (current-time))
+    )
+    (asserts! (get is-active merchant) ERR_UNAUTHORIZED)
+    (asserts! (is-none (map-get? payment-link-slugs { slug: slug })) ERR_DUPLICATE_SLUG)
+    (match (map-get? merchant-universal-link { merchant: tx-sender })
+      active-link-ref
+        (let ((existing-link-id (get link-id active-link-ref)))
+          (match (map-get? payment-links { link-id: existing-link-id })
+            existing-link
+              (map-set payment-links { link-id: existing-link-id }
+                (merge existing-link {
+                  is-active: false,
+                  updated-at: now,
+                })
+              )
+            true
+          )
+        )
+      true
+    )
+    (persist-payment-link
+      link-id
+      slug
+      LINK_KIND_MULTIPAY
+      none
+      none
+      title
+      description
+      none
+      none
+      none
+      true
+      true
+      true
+      true
+      true
+      true
+      now
+    )
+    (map-set merchant-universal-link { merchant: tx-sender } { link-id: link-id })
+    (map-set payment-link-slugs { slug: slug } { link-id: link-id })
+    (map-set payment-link-index { index: idx } { link-id: link-id })
+    (var-set payment-link-total (+ idx u1))
+    (ok link-id)
+  )
+)
+
+(define-public (create-subscription-payment-link
+    (slug (string-ascii 64))
+    (plan-id (string-ascii 85))
+    (title (string-utf8 128))
+    (description (string-utf8 256))
+  )
+  (let (
+      (merchant (unwrap! (map-get? merchants { merchant: tx-sender }) ERR_UNAUTHORIZED))
+      (plan (unwrap! (map-get? subscription-plans { plan-id: plan-id }) ERR_PLAN_NOT_FOUND))
+      (link-id (new-payment-link-id))
+      (idx (var-get payment-link-total))
+      (now (current-time))
+    )
+    (asserts! (get is-active merchant) ERR_UNAUTHORIZED)
+    (asserts! (is-eq (get merchant plan) tx-sender) ERR_UNAUTHORIZED)
+    (asserts! (is-none (map-get? payment-link-slugs { slug: slug })) ERR_DUPLICATE_SLUG)
+    (persist-payment-link
+      link-id
+      slug
+      LINK_KIND_SUBSCRIPTION
+      none
+      (some plan-id)
+      title
+      description
+      (some (get currency plan))
+      (some (get amount plan))
+      none
+      false
+      (is-eq (get currency plan) CURRENCY_STX)
+      (is-eq (get currency plan) CURRENCY_SBTC)
+      (is-eq (get currency plan) CURRENCY_USDC)
+      false
+      true
+      now
+    )
+    (map-set payment-link-slugs { slug: slug } { link-id: link-id })
+    (map-set payment-link-index { index: idx } { link-id: link-id })
+    (var-set payment-link-total (+ idx u1))
+    (ok link-id)
+  )
+)
+
+(define-public (set-payment-link-active
+    (link-id (string-ascii 85))
+    (active bool)
+  )
+  (let ((link (unwrap! (map-get? payment-links { link-id: link-id }) ERR_LINK_NOT_FOUND)))
+    (asserts! (is-eq (get merchant link) tx-sender) ERR_UNAUTHORIZED)
+    (if (and active (get is-universal link))
+      (match (map-get? merchant-universal-link { merchant: tx-sender })
+        active-link-ref
+          (let ((existing-link-id (get link-id active-link-ref)))
+            (if (not (is-eq existing-link-id link-id))
+              (match (map-get? payment-links { link-id: existing-link-id })
+                existing-link
+                  (map-set payment-links { link-id: existing-link-id }
+                    (merge existing-link {
+                      is-active: false,
+                      updated-at: (current-time),
+                    })
+                  )
+                true
+              )
+              true
+            )
+          )
+        true
+      )
+      true
+    )
+    (map-set payment-links { link-id: link-id }
+      (merge link {
+        is-active: active,
+        updated-at: (current-time),
+      })
+    )
+    (if (get is-universal link)
+      (if active
+        (map-set merchant-universal-link { merchant: tx-sender } { link-id: link-id })
+        (match (map-get? merchant-universal-link { merchant: tx-sender })
+          active-link-ref
+            (if (is-eq (get link-id active-link-ref) link-id)
+              (begin
+                (map-delete merchant-universal-link { merchant: tx-sender })
+                true
+              )
+              true
+            )
+          true
+        )
+      )
+      true
+    )
+    (ok true)
   )
 )
 
@@ -811,6 +1098,21 @@
 (define-read-only (get-payment-link-by-slug (slug (string-ascii 64)))
   (match (map-get? payment-link-slugs { slug: slug })
     link-ref (map-get? payment-links { link-id: (get link-id link-ref) })
+    none
+  )
+)
+
+(define-read-only (get-active-universal-link (merchant principal))
+  (match (map-get? merchant-universal-link { merchant: merchant })
+    link-ref
+      (match (map-get? payment-links { link-id: (get link-id link-ref) })
+        link
+          (if (get is-active link)
+            (some link)
+            none
+          )
+        none
+      )
     none
   )
 )
