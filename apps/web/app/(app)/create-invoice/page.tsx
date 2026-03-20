@@ -33,7 +33,7 @@ const flows: Array<{ id: CreateFlow; label: string; summary: string }> = [
   {
     id: "multipay",
     label: "MultiPay",
-    summary: "Reusable public route for multiple payments. Each customer payment creates a fresh invoice.",
+    summary: "Reusable invoice for multiple payments.",
   },
 ];
 
@@ -522,7 +522,7 @@ export default function CreateInvoicePage() {
             <div className="grid gap-4 md:grid-cols-2">
               <div>
                 <label className="text-xs uppercase tracking-[0.24em] text-white/40">
-                  {flow === "multipay" && multiPayPricingMode === "suggested" ? "Fallback amount" : "Amount"}
+                  Amount
                 </label>
                 <div className="mt-2 flex items-center rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
                   <input
@@ -532,8 +532,8 @@ export default function CreateInvoicePage() {
                     placeholder={
                       flow === "multipay"
                         ? multiPayPricingMode === "suggested"
-                          ? "Optional default shown first"
-                          : "Fixed payment amount"
+                          ? "Optional default amount"
+                          : "Fixed amount"
                         : "Invoice amount"
                     }
                     inputMode="decimal"
@@ -694,7 +694,7 @@ export default function CreateInvoicePage() {
                             className="w-full bg-transparent text-sm text-white/80 outline-none"
                             value={entry}
                             onChange={(event) => updateSuggestedAmount(index, event.target.value)}
-                            placeholder={`Option ${index + 1}`}
+                            // placeholder={`Amount ${index + 1}`}
                             inputMode="decimal"
                           />
                           <span className="text-xs text-white/55">{currency}</span>
@@ -707,9 +707,9 @@ export default function CreateInvoicePage() {
                   </div>
                 ) : null}
 
-                <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70">
-                  MultiPay stays active after each payment. It uses the same currency and description every time, with either one fixed amount or a small set of suggested choices.
-                </div>
+                {/* <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-xs text-white/70">
+                  MultiPay stays active after each payment. It uses the same currency and description every time.
+                </div> */}
               </>
             )}
 

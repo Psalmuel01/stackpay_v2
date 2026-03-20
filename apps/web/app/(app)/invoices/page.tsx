@@ -143,11 +143,10 @@ export default function InvoicesPage() {
               <button
                 key={tab}
                 onClick={() => setFilter(tab)}
-                className={`rounded-full px-4 py-2 text-xs uppercase transition ${
-                  filter === tab
+                className={`rounded-full px-4 py-2 text-xs uppercase transition ${filter === tab
                     ? "border border-white/20 bg-white text-black"
                     : "border border-white/10 bg-white/5 text-white/70"
-                }`}
+                  }`}
               >
                 {tab}
               </button>
@@ -193,7 +192,7 @@ export default function InvoicesPage() {
 
                     <div>
                       <div className="text-sm text-white/78">
-                        {invoice.customer_name || "Walk-in customer"}
+                        {invoice.customer_name || "Customer"}
                       </div>
                       <div className="mt-1 text-xs text-white/40">
                         {invoice.customer_email || "No email"}
@@ -247,7 +246,7 @@ export default function InvoicesPage() {
                     <div>
                       <div className="text-sm font-semibold text-white">{invoice.onchain_invoice_id}</div>
                       <div className="mt-1 text-sm text-white/60">
-                        {invoice.customer_name || "Walk-in customer"}
+                        {invoice.customer_name || "Customer"}
                       </div>
                     </div>
                     <StatusBadge

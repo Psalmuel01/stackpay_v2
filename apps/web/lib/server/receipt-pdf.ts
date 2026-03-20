@@ -92,18 +92,18 @@ function truncateMiddle(value: string, maxLength = 34) {
 
 type RGB = [number, number, number];
 
-const DARK_BG:   RGB = [0.07, 0.07, 0.08];
-const CARD_BG:   RGB = [0.11, 0.11, 0.13];
-const CARD_BDR:  RGB = [0.22, 0.22, 0.25];
-const INNER_BG:  RGB = [0.07, 0.07, 0.09];
+const DARK_BG: RGB = [0.07, 0.07, 0.08];
+const CARD_BG: RGB = [0.11, 0.11, 0.13];
+const CARD_BDR: RGB = [0.22, 0.22, 0.25];
+const INNER_BG: RGB = [0.07, 0.07, 0.09];
 const INNER_BDR: RGB = [0.18, 0.18, 0.21];
-const WHITE:     RGB = [1, 1, 1];
-const MUTED:     RGB = [0.55, 0.55, 0.60];
-const LABEL:     RGB = [0.38, 0.38, 0.43];
-const GREEN:     RGB = [0.09, 0.72, 0.44];
-const GREEN_BG:  RGB = [0.05, 0.30, 0.18];
-const AMBER:     RGB = [0.96, 0.62, 0.04];
-const BLUE:      RGB = [0.30, 0.55, 0.95];
+const WHITE: RGB = [1, 1, 1];
+const MUTED: RGB = [0.55, 0.55, 0.60];
+const LABEL: RGB = [0.38, 0.38, 0.43];
+const GREEN: RGB = [0.09, 0.72, 0.44];
+const GREEN_BG: RGB = [0.05, 0.30, 0.18];
+const AMBER: RGB = [0.96, 0.62, 0.04];
+const BLUE: RGB = [0.30, 0.55, 0.95];
 
 // ── Primitives ────────────────────────────────────────────────────────────────
 
@@ -125,10 +125,10 @@ function roundedFill(x: number, y: number, w: number, h: number, [r, g, b]: RGB,
   const k = rx * 0.552;
   return [
     `${r} ${g} ${b} rg`,
-    `${x+rx} ${y} m ${x+w-rx} ${y} l ${x+w-rx+k} ${y} ${x+w} ${y+k} ${x+w} ${y+rx} c`,
-    `${x+w} ${y+h-rx} l ${x+w} ${y+h-rx+k} ${x+w-rx+k} ${y+h} ${x+w-rx} ${y+h} c`,
-    `${x+rx} ${y+h} l ${x+rx-k} ${y+h} ${x} ${y+h-rx+k} ${x} ${y+h-rx} c`,
-    `${x} ${y+rx} l ${x} ${y+rx-k} ${x+rx-k} ${y} ${x+rx} ${y} c f`,
+    `${x + rx} ${y} m ${x + w - rx} ${y} l ${x + w - rx + k} ${y} ${x + w} ${y + k} ${x + w} ${y + rx} c`,
+    `${x + w} ${y + h - rx} l ${x + w} ${y + h - rx + k} ${x + w - rx + k} ${y + h} ${x + w - rx} ${y + h} c`,
+    `${x + rx} ${y + h} l ${x + rx - k} ${y + h} ${x} ${y + h - rx + k} ${x} ${y + h - rx} c`,
+    `${x} ${y + rx} l ${x} ${y + rx - k} ${x + rx - k} ${y} ${x + rx} ${y} c f`,
   ].join(" ");
 }
 
@@ -136,10 +136,10 @@ function roundedStroke(x: number, y: number, w: number, h: number, [r, g, b]: RG
   const k = rx * 0.552;
   return [
     `q ${lw} w ${r} ${g} ${b} RG`,
-    `${x+rx} ${y} m ${x+w-rx} ${y} l ${x+w-rx+k} ${y} ${x+w} ${y+k} ${x+w} ${y+rx} c`,
-    `${x+w} ${y+h-rx} l ${x+w} ${y+h-rx+k} ${x+w-rx+k} ${y+h} ${x+w-rx} ${y+h} c`,
-    `${x+rx} ${y+h} l ${x+rx-k} ${y+h} ${x} ${y+h-rx+k} ${x} ${y+h-rx} c`,
-    `${x} ${y+rx} l ${x} ${y+rx-k} ${x+rx-k} ${y} ${x+rx} ${y} c S Q`,
+    `${x + rx} ${y} m ${x + w - rx} ${y} l ${x + w - rx + k} ${y} ${x + w} ${y + k} ${x + w} ${y + rx} c`,
+    `${x + w} ${y + h - rx} l ${x + w} ${y + h - rx + k} ${x + w - rx + k} ${y + h} ${x + w - rx} ${y + h} c`,
+    `${x + rx} ${y + h} l ${x + rx - k} ${y + h} ${x} ${y + h - rx + k} ${x} ${y + h - rx} c`,
+    `${x} ${y + rx} l ${x} ${y + rx - k} ${x + rx - k} ${y} ${x + rx} ${y} c S Q`,
   ].join(" ");
 }
 
@@ -203,7 +203,7 @@ function makePdf(pageContent: string, annotObjects: string[], contentLength: num
 export function buildReceiptPdf(data: ReceiptPdfData) {
   const merchantName = data.merchant?.company_name || data.merchant?.display_name || "StackPay Merchant";
   const description = data.invoice?.description || "Payment received via StackPay";
-  const customerName = data.invoice?.customer_name || "Walk-in customer";
+  const customerName = data.invoice?.customer_name || "Customer";
   const customerEmail = data.invoice?.customer_email || "—";
   const network = process.env.NEXT_PUBLIC_STACKS_NETWORK ?? "testnet";
 
@@ -253,14 +253,14 @@ export function buildReceiptPdf(data: ReceiptPdfData) {
   const c1 = L + 16;
   const c2 = L + W / 2 + 8;
 
-  field(c1, dCardY + dCardH - 24, "Receipt ID",    truncateMiddle(data.receipt.onchain_receipt_id || "Unavailable", 26), out);
-  field(c2, dCardY + dCardH - 24, "Invoice ID",    truncateMiddle(data.invoice?.onchain_invoice_id || "Unavailable", 26), out);
+  field(c1, dCardY + dCardH - 24, "Receipt ID", truncateMiddle(data.receipt.onchain_receipt_id || "Unavailable", 26), out);
+  field(c2, dCardY + dCardH - 24, "Invoice ID", truncateMiddle(data.invoice?.onchain_invoice_id || "Unavailable", 26), out);
   out.push(hline(dCardY + dCardH - 52, L + 8, R - 8, INNER_BDR));
-  field(c1, dCardY + dCardH - 66, "Customer",      customerName, out);
-  field(c2, dCardY + dCardH - 66, "Email",         customerEmail, out);
+  field(c1, dCardY + dCardH - 66, "Customer", customerName, out);
+  field(c2, dCardY + dCardH - 66, "Email", customerEmail, out);
   out.push(hline(dCardY + dCardH - 94, L + 8, R - 8, INNER_BDR));
-  field(c1, dCardY + 14,          "Payer wallet",  truncateMiddle(data.receipt.payer_wallet_address || "Unavailable", 26), out);
-  field(c2, dCardY + 14,          "Network",       network.charAt(0).toUpperCase() + network.slice(1), out);
+  field(c1, dCardY + 14, "Payer wallet", truncateMiddle(data.receipt.payer_wallet_address || "Unavailable", 26), out);
+  field(c2, dCardY + 14, "Network", network.charAt(0).toUpperCase() + network.slice(1), out);
 
   // ── Transaction ID card (single line, clickable) ──────────────────────────
   const innerPad = 10;

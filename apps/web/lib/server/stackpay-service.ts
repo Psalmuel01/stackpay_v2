@@ -854,7 +854,7 @@ export async function preparePublicInvoiceFromLink(input: PreparePublicInvoiceFr
       throw new Error("This MultiPay link uses a fixed amount.");
     }
   }
-  if (defaultAmount > 0 && !allowCustomAmount && Number(input.amount) !== defaultAmount) {
+  if (!isMultipay && defaultAmount > 0 && !allowCustomAmount && Number(input.amount) !== defaultAmount) {
     throw new Error("This payment link uses a fixed amount.");
   }
 

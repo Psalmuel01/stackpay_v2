@@ -35,16 +35,16 @@ export default function NotificationsButton() {
     const resolvedWalletAddress = walletAddress;
 
     async function loadNotifications() {
-      const response = await fetch(`/api/notifications?walletAddress=${encodeURIComponent(resolvedWalletAddress)}`, {
-        cache: "no-store",
-      });
-      const payload = await response.json();
-      if (!response.ok) {
-        return;
-      }
-
-      if (!cancelled) {
+      try {
+        const response = await fetch(
+          `/api/notifications?walletAddress=${encodeURIComponent(resolvedWalletAddress)}`,
+          { cache: "no-store" }
+        );
+        const payload = await response.json();
+        if (!response.ok || cancelled) return;
         setNotifications((payload.data ?? []) as NotificationItem[]);
+      } catch {
+        // silently ignore — network error or API not yet available
       }
     }
 
@@ -84,18 +84,18 @@ export default function NotificationsButton() {
 
     void fetch("/api/notifications", {
       method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ walletAddress: resolvedWalletAddress }),
-    }).then(() => {
-      setNotifications((current) =>
-        current.map((item) => ({
-          ...item,
-          read_at: item.read_at ?? new Date().toISOString(),
-        }))
-      );
-    });
+    })
+      .then(() => {
+        setNotifications((current) =>
+          current.map((item) => ({
+            ...item,
+            read_at: item.read_at ?? new Date().toISOString(),
+          }))
+        );
+      })
+      .catch(() => { });
   }, [open, walletAddress]);
 
   const unreadCount = notifications.filter((item) => !item.read_at).length;
@@ -130,11 +130,10 @@ export default function NotificationsButton() {
               notifications.map((item) => {
                 const content = (
                   <div
-                    className={`rounded-2xl px-3 py-3 text-sm transition ${
-                      item.read_at
+                    className={`rounded-2xl px-3 py-3 text-sm transition ${item.read_at
                         ? "bg-white/5 text-white/70"
                         : "bg-white/10 text-white"
-                    }`}
+                      }`}
                   >
                     <div className="font-medium">{item.title}</div>
                     <div className="mt-1 text-sm text-white/55">{item.body}</div>

@@ -333,7 +333,7 @@ export default function HostedPaymentPage({
                 <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-4">
                   <div className="text-[11px] uppercase tracking-[0.22em] text-white/35">Customer</div>
                   <div className="mt-2 text-sm text-white/75">
-                    {invoice.customer_name || "Walk-in customer"}
+                    {invoice.customer_name || "Customer"}
                   </div>
                   <div className="mt-1 text-xs text-white/40">{invoice.customer_email || "No email"}</div>
                 </div>
