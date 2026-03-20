@@ -212,20 +212,49 @@ export async function getMerchantProfileByWallet(walletAddress: string) {
 
 export async function upsertMerchantProfile(input: MerchantProfileInput) {
   const walletAddress = ensureWalletAddress(input.walletAddress);
-  const fallbackSlugBase = slugify(input.companyName || input.displayName || "merchant");
+  const existingMerchant = await getMerchantProfileByWallet(walletAddress);
+  const fallbackSlugBase = slugify(
+    input.companyName ||
+      input.displayName ||
+      String(existingMerchant?.company_name || existingMerchant?.display_name || "merchant")
+  );
   const fallbackSlug = `${fallbackSlugBase}-${walletAddress.slice(-6).toLowerCase()}`;
   const merchant = await upsertRow(
     "merchant_profiles",
     {
       wallet_address: walletAddress,
-      display_name: input.displayName ?? "",
-      company_name: input.companyName ?? "",
-      email: input.email ?? "",
-      slug: input.slug ? slugify(input.slug) : fallbackSlug,
-      settlement_wallet: input.settlementWallet ?? walletAddress,
-      webhook_url: input.webhookUrl ?? null,
-      default_currency: input.defaultCurrency ?? "sBTC",
-      metadata: input.metadata ?? {},
+      display_name:
+        input.displayName !== undefined
+          ? input.displayName
+          : String(existingMerchant?.display_name ?? ""),
+      company_name:
+        input.companyName !== undefined
+          ? input.companyName
+          : String(existingMerchant?.company_name ?? ""),
+      email:
+        input.email !== undefined
+          ? input.email
+          : String(existingMerchant?.email ?? ""),
+      slug:
+        input.slug !== undefined
+          ? (input.slug.trim() ? slugify(input.slug) : String(existingMerchant?.slug ?? fallbackSlug))
+          : String(existingMerchant?.slug ?? fallbackSlug),
+      settlement_wallet:
+        input.settlementWallet !== undefined
+          ? input.settlementWallet
+          : String(existingMerchant?.settlement_wallet ?? walletAddress),
+      webhook_url:
+        input.webhookUrl !== undefined
+          ? input.webhookUrl || null
+          : (existingMerchant?.webhook_url ?? null),
+      default_currency:
+        input.defaultCurrency !== undefined
+          ? input.defaultCurrency
+          : (existingMerchant?.default_currency ?? "sBTC"),
+      metadata:
+        input.metadata !== undefined
+          ? input.metadata
+          : (existingMerchant?.metadata ?? {}),
     },
     "wallet_address"
   );
