@@ -22,6 +22,14 @@ type RemoteInvoice = {
     company_name?: string;
     display_name?: string;
     slug?: string;
+    email?: string;
+    settlement_wallet?: string;
+  } | null;
+  receipt?: {
+    onchain_receipt_id: string;
+    tx_id: string;
+    payer_wallet_address: string;
+    paid_at: string | null;
   } | null;
 };
 
@@ -131,6 +139,7 @@ export default function HostedPaymentPage({
     invoice?.merchant?.company_name ||
     invoice?.merchant?.display_name ||
     "Merchant";
+  const resolvedReceiptId = paymentReceiptId || invoice?.receipt?.onchain_receipt_id || null;
 
   async function handleRemotePayment() {
     if (!invoice?.onchain_invoice_id) {
@@ -368,6 +377,16 @@ export default function HostedPaymentPage({
                   <div className="w-full max-w-sm rounded-2xl bg-white/8 px-4 py-4 text-sm text-white/75">
                     Receipt {paymentReceiptId} confirmed.
                   </div>
+                ) : null}
+                {resolvedReceiptId ? (
+                  <a
+                    href={`/api/receipts/${resolvedReceiptId}/pdf`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="w-full max-w-sm rounded-full border border-white/10 bg-white/5 px-5 py-3 text-center text-sm text-white/80 transition hover:border-white/20 hover:bg-white/[0.08]"
+                  >
+                    Download receipt PDF
+                  </a>
                 ) : null}
               </div>
             </div>

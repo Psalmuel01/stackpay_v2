@@ -368,6 +368,10 @@ export async function getInvoiceDetailsByOnchainId(invoiceId: string) {
   const merchant = await selectSingle<Row>("merchant_profiles", {
     id: `eq.${String(invoice.merchant_id)}`,
   });
+  const receipt = await selectSingle<Row>("receipts", {
+    invoice_id: `eq.${String(invoice.id)}`,
+    order: "created_at.desc",
+  });
 
   return {
     ...invoice,
@@ -376,6 +380,67 @@ export async function getInvoiceDetailsByOnchainId(invoiceId: string) {
           display_name: merchant.display_name ?? "",
           company_name: merchant.company_name ?? "",
           slug: merchant.slug ?? "",
+          email: merchant.email ?? "",
+          settlement_wallet: merchant.settlement_wallet ?? "",
+        }
+      : null,
+    receipt: receipt
+      ? {
+          onchain_receipt_id: receipt.onchain_receipt_id ?? "",
+          tx_id: receipt.tx_id ?? "",
+          payer_wallet_address: receipt.payer_wallet_address ?? "",
+          paid_at: receipt.paid_at ?? null,
+        }
+      : null,
+  };
+}
+
+export async function getReceiptDetailsByReceiptId(receiptId: string) {
+  const receipt = await selectSingle<Row>("receipts", {
+    onchain_receipt_id: `eq.${receiptId}`,
+  });
+
+  if (!receipt) {
+    return null;
+  }
+
+  const invoice = await selectSingle<Row>("invoices", {
+    id: `eq.${String(receipt.invoice_id)}`,
+  });
+  const merchant = invoice
+    ? await selectSingle<Row>("merchant_profiles", {
+        id: `eq.${String(invoice.merchant_id)}`,
+      })
+    : null;
+
+  return {
+    receipt: {
+      id: String(receipt.id),
+      onchain_receipt_id: String(receipt.onchain_receipt_id ?? receipt.receipt_key ?? ""),
+      tx_id: String(receipt.tx_id ?? ""),
+      payer_wallet_address: String(receipt.payer_wallet_address ?? ""),
+      paid_at: String(receipt.paid_at ?? ""),
+      amount: toNumericValue(receipt.amount),
+      currency: String(receipt.currency) as Currency,
+    },
+    invoice: invoice
+      ? {
+          onchain_invoice_id: String(invoice.onchain_invoice_id ?? ""),
+          description: String(invoice.description ?? ""),
+          customer_name: String(invoice.customer_name ?? ""),
+          customer_email: String(invoice.customer_email ?? ""),
+          recipient_address: String(invoice.recipient_address ?? ""),
+          created_at: String(invoice.created_at ?? ""),
+          paid_at: String(invoice.paid_at ?? ""),
+        }
+      : null,
+    merchant: merchant
+      ? {
+          company_name: String(merchant.company_name ?? ""),
+          display_name: String(merchant.display_name ?? ""),
+          email: String(merchant.email ?? ""),
+          slug: String(merchant.slug ?? ""),
+          settlement_wallet: String(merchant.settlement_wallet ?? ""),
         }
       : null,
   };
