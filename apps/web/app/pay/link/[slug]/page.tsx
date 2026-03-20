@@ -56,6 +56,10 @@ function sanitizeDecimalInput(value: string) {
   return `${whole}.${fractionParts.join("")}`;
 }
 
+function isValidEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
 export default function PublicPaymentLinkPage({
   params,
 }: {
@@ -66,6 +70,7 @@ export default function PublicPaymentLinkPage({
   const [loadingRemote, setLoadingRemote] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [connectedAddress, setConnectedAddress] = useState<string | null>(null);
   const [selectedCurrency, setSelectedCurrency] = useState<Currency>("sBTC");
   const [email, setEmail] = useState("");
@@ -145,17 +150,26 @@ export default function PublicPaymentLinkPage({
 
     if (!connectedAddress) {
       setError("Connect a wallet before generating an invoice.");
+      setSuccessMessage(null);
       return;
     }
 
     const numericAmount = Number(amount || 0);
     if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
       setError("Enter a valid amount.");
+      setSuccessMessage(null);
+      return;
+    }
+
+    if (email.trim() && !isValidEmail(email.trim())) {
+      setError("Enter a valid email address.");
+      setSuccessMessage(null);
       return;
     }
 
     setSubmitting(true);
     setError(null);
+    setSuccessMessage(null);
 
     try {
       const response = await fetch(`/api/payment-links/public/${params.slug}/invoices`, {
@@ -183,6 +197,7 @@ export default function PublicPaymentLinkPage({
       await submitContractIntent(contractIntent, {
         onCancel: () => {
           setError("Contract call was canceled.");
+          setSubmitting(false);
         },
         onFinish: async ({ txId }) => {
           try {
@@ -211,6 +226,7 @@ export default function PublicPaymentLinkPage({
               }
 
               if (confirmPayload.data?.sync?.status === "success" && confirmPayload.data?.sync?.onchainInvoiceId) {
+                setSuccessMessage("Invoice generated successfully. Redirecting to checkout...");
                 router.push(`/pay/${confirmPayload.data.sync.onchainInvoiceId}`);
                 return;
               }
@@ -374,9 +390,11 @@ export default function PublicPaymentLinkPage({
 
             <input
               className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/75 outline-none"
+              type="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               placeholder="Receipt email (optional)"
+              autoComplete="email"
             />
             <input
               className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/75 outline-none"
@@ -390,9 +408,10 @@ export default function PublicPaymentLinkPage({
               disabled={submitting}
               className="w-full rounded-full border border-white/20 bg-white px-5 py-3 text-sm font-semibold text-black disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {submitting ? "Working..." : "Generate invoice"}
+              {submitting ? "Generating..." : "Generate invoice"}
             </button>
-            {error ? <div className="text-sm text-rose-300">{error}</div> : null}
+            {successMessage ? <div className="text-sm text-emerald-300">{successMessage}</div> : null}
+            {error ? <div className="text-sm text-red-300">{error}</div> : null}
           </div>
         </GlassCard>
       </div>

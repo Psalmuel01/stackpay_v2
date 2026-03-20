@@ -20,6 +20,10 @@ function truncateAddress(address: string) {
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
 }
 
+function isValidEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
 export default function ProfilePage() {
   const [connectedAddress, setConnectedAddress] = useState<string | null>(null);
   const [profile, setProfile] = useState<MerchantProfile>({
@@ -103,6 +107,11 @@ export default function ProfilePage() {
       return;
     }
 
+    if ((profile.email ?? "").trim() && !isValidEmail((profile.email ?? "").trim())) {
+      setError("Enter a valid email address.");
+      return;
+    }
+
     setSaving(true);
 
     try {
@@ -183,9 +192,11 @@ export default function ProfilePage() {
             <div className="grid gap-3 md:grid-cols-2">
               <input
                 className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70"
+                type="email"
                 value={profile.email ?? ""}
                 onChange={(event) => updateField("email", event.target.value)}
                 placeholder="Email address"
+                autoComplete="email"
               />
               <input
                 className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70"

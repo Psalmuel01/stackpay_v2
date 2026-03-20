@@ -180,7 +180,7 @@ function assertMerchantSetupReady(merchant: Row | null) {
   }
 
   if (!merchantDisplayName(merchant)) {
-    throw new Error("Add a business name or display name in Settings before creating an invoice.");
+    throw new Error("Add a business name or display name in Profile before creating an invoice.");
   }
 }
 

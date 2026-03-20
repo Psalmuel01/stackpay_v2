@@ -1,7 +1,9 @@
 export default function QrPreview({
   label = "stackpay://pay/invoice/6E71A3",
+  caption = "Universal QR route",
 }: {
   label?: string;
+  caption?: string;
 }) {
   return (
     <div className="rounded-[32px] border border-white/10 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.08),rgba(255,255,255,0.03)_55%,transparent)] p-6">
@@ -34,7 +36,7 @@ export default function QrPreview({
       </div>
       <div className="mt-5 text-center">
         <div className="text-[11px] uppercase tracking-[0.22em] text-white/40">
-          Universal QR route
+          {caption}
         </div>
         <div className="mt-2 font-mono text-xs text-white/70">{label}</div>
       </div>

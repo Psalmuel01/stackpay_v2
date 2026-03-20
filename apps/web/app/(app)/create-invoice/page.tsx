@@ -71,11 +71,15 @@ function sanitizeDecimalInput(value: string) {
   return `${whole}.${fractionParts.join("")}`;
 }
 
+function isValidEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
 export default function CreateInvoicePage() {
   const [flow, setFlow] = useState<CreateFlow>("standard");
   const [currency, setCurrency] = useState<Currency>("STX");
   const [amount, setAmount] = useState("");
-  const [expiration, setExpiration] = useState<ExpirationOption>(24);
+  const [expiration, setExpiration] = useState<ExpirationOption>(1);
   const [customExpirationValue, setCustomExpirationValue] = useState("");
   const [customExpirationUnit, setCustomExpirationUnit] = useState<"minutes" | "hours" | "days">("minutes");
   const [customer, setCustomer] = useState("");
@@ -97,6 +101,7 @@ export default function CreateInvoicePage() {
   const [copied, setCopied] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [connectedAddress, setConnectedAddress] = useState<string | null>(null);
   const resolvedRecipientAddress = merchantProfile?.settlement_wallet || connectedAddress || "";
   const merchantName = (merchantProfile?.company_name || merchantProfile?.display_name || "").trim();
@@ -160,6 +165,17 @@ export default function CreateInvoicePage() {
     await navigator.clipboard.writeText(`${window.location.origin}${result.href}`);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1800);
+  }
+
+  function resetCreateForm() {
+    setAmount("");
+    setCustomer("");
+    setEmail("");
+    setDescription("");
+    setTitle("");
+    setSlug("");
+    setAmountStep("");
+    setCustomExpirationValue("");
   }
 
   async function confirmInvoiceFromChain(input: {
@@ -242,6 +258,7 @@ export default function CreateInvoicePage() {
 
   async function submit() {
     setError(null);
+    setSuccessMessage(null);
 
     if (flow === "standard") {
       if (!connectedAddress) {
@@ -267,6 +284,11 @@ export default function CreateInvoicePage() {
 
       if (!Number.isFinite(expiresInSeconds) || expiresInSeconds <= 0) {
         setError("Enter a valid expiration window.");
+        return;
+      }
+
+      if (email.trim() && !isValidEmail(email.trim())) {
+        setError("Enter a valid email address.");
         return;
       }
 
@@ -311,6 +333,7 @@ export default function CreateInvoicePage() {
         await submitContractIntent(contractIntent, {
           onCancel: () => {
             setError("Contract call was canceled.");
+            setSubmitting(false);
           },
           onFinish: async ({ txId }) => {
             try {
@@ -344,14 +367,19 @@ export default function CreateInvoicePage() {
                 txId,
                 onchainInvoiceId: chain.onchainInvoiceId,
               });
+              if (chain.onchainInvoiceId) {
+                setSuccessMessage("Invoice generated successfully.");
+                resetCreateForm();
+              }
             } catch (syncError) {
               setError(syncError instanceof Error ? syncError.message : "Failed to confirm invoice transaction.");
+            } finally {
+              setSubmitting(false);
             }
           },
         });
       } catch (nextError) {
         setError(nextError instanceof Error ? nextError.message : "Failed to create invoice.");
-      } finally {
         setSubmitting(false);
       }
 
@@ -365,6 +393,11 @@ export default function CreateInvoicePage() {
 
     if (!merchantReady) {
       setError("Complete Settings first so the payment link has a real merchant identity.");
+      return;
+    }
+
+    if (email.trim() && !isValidEmail(email.trim())) {
+      setError("Enter a valid email address.");
       return;
     }
 
@@ -402,6 +435,7 @@ export default function CreateInvoicePage() {
       await submitContractIntent(contractIntent, {
         onCancel: () => {
           setError("Contract call was canceled.");
+          setSubmitting(false);
         },
         onFinish: async ({ txId }) => {
           try {
@@ -422,14 +456,17 @@ export default function CreateInvoicePage() {
               storage: "Supabase + Stacks",
               txId,
             });
+            setSuccessMessage("MultiPay route created successfully.");
+            resetCreateForm();
           } catch (syncError) {
             setError(syncError instanceof Error ? syncError.message : "Failed to confirm payment link.");
+          } finally {
+            setSubmitting(false);
           }
         },
       });
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Failed to create MultiPay route.");
-    } finally {
       setSubmitting(false);
     }
   }
@@ -450,11 +487,10 @@ export default function CreateInvoicePage() {
                   <button
                     key={item.id}
                     onClick={() => setFlow(item.id)}
-                    className={`rounded-full px-4 py-2 text-sm transition ${
-                      flow === item.id
+                    className={`rounded-full px-4 py-2 text-sm transition ${flow === item.id
                         ? "border border-white/20 bg-white text-black"
                         : "border border-white/10 bg-white/5 text-white/70 hover:border-white/30"
-                    }`}
+                      }`}
                   >
                     {item.label}
                   </button>
@@ -488,11 +524,10 @@ export default function CreateInvoicePage() {
                     <button
                       key={item}
                       onClick={() => setCurrency(item)}
-                      className={`rounded-full px-3 py-2 text-xs transition ${
-                        currency === item
+                      className={`rounded-full px-3 py-2 text-xs transition ${currency === item
                           ? "border border-white/20 bg-white text-black"
                           : "border border-white/10 bg-white/5 text-white/70"
-                      }`}
+                        }`}
                     >
                       {item}
                     </button>
@@ -517,9 +552,11 @@ export default function CreateInvoicePage() {
                     <label className="text-xs uppercase tracking-[0.24em] text-white/40">Email</label>
                     <input
                       className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/80 outline-none"
+                      type="email"
                       value={email}
                       onChange={(event) => setEmail(event.target.value)}
                       placeholder="billing@example.com"
+                      autoComplete="email"
                     />
                   </div>
                 </div>
@@ -531,11 +568,10 @@ export default function CreateInvoicePage() {
                       <button
                         key={item.label}
                         onClick={() => setExpiration(item.hours)}
-                        className={`rounded-full px-3 py-2 text-xs transition ${
-                          expiration === item.hours
+                        className={`rounded-full px-3 py-2 text-xs transition ${expiration === item.hours
                             ? "border border-white/20 bg-white text-black"
                             : "border border-white/10 bg-white/5 text-white/70"
-                        }`}
+                          }`}
                       >
                         {item.label}
                       </button>
@@ -558,11 +594,10 @@ export default function CreateInvoicePage() {
                               key={unit}
                               type="button"
                               onClick={() => setCustomExpirationUnit(unit)}
-                              className={`rounded-full px-3 py-2 text-xs transition ${
-                                customExpirationUnit === unit
+                              className={`rounded-full px-3 py-2 text-xs transition ${customExpirationUnit === unit
                                   ? "border border-white/20 bg-white text-black"
                                   : "border border-white/10 bg-white/5 text-white/70"
-                              }`}
+                                }`}
                             >
                               {unit}
                             </button>
@@ -657,7 +692,7 @@ export default function CreateInvoicePage() {
               <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70">
                 Add a business name or display name in{" "}
                 <Link href="/profile" className="text-white underline underline-offset-4">
-                  Settings
+                  Profile
                 </Link>{" "}
                 before creating invoices. That merchant name is what customers will see on the hosted payment page.
               </div>
@@ -669,19 +704,18 @@ export default function CreateInvoicePage() {
                 disabled={submitting || (flow === "standard" && !merchantReady)}
                 className="button-glow rounded-full border border-white/50 bg-white px-6 py-3 text-sm font-semibold text-black transition hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {submitting ? "Working..." : flow === "standard" ? "Generate invoice" : "Create MultiPay route"}
+                {submitting ? (flow === "standard" ? "Generating..." : "Creating...") : flow === "standard" ? "Generate invoice" : "Create MultiPay route"}
               </button>
             </div>
 
-            {flow === "standard" ? (
+            {flow === "standard" && !connectedAddress && (
               <div className="text-xs text-white/45">
-                {connectedAddress
-                  ? `Connected merchant wallet: ${connectedAddress}`
-                  : "Connect a Stacks wallet first. StackPay only stores the invoice after the contract succeeds and returns the on-chain invoice id."}
+                Connect a Stacks wallet first. StackPay only stores the invoice after the contract succeeds and returns the on-chain invoice id.
               </div>
-            ) : null}
+            )}
 
-            {error ? <div className="text-sm text-rose-300">{error}</div> : null}
+            {successMessage ? <div className="text-sm text-emerald-300">{successMessage}</div> : null}
+            {error ? <div className="text-sm text-red-300">{error}</div> : null}
           </div>
         </GlassCard>
 
@@ -698,7 +732,10 @@ export default function CreateInvoicePage() {
                   : `Reusable route · starts at ${formatCurrencyAmount(Number(amount || 0), currency)}`}
               </div>
               <div className="mt-5">
-                <QrPreview label={previewLabel} />
+                <QrPreview
+                  caption={flow === "standard" ? "Invoice link" : "Payment link"}
+                  label={previewLabel}
+                />
               </div>
             </div>
           </GlassCard>
@@ -715,18 +752,17 @@ export default function CreateInvoicePage() {
               </button>
               <Link
                 href={result?.href ?? "#"}
-                className={`flex w-full items-center justify-center rounded-full border px-4 py-3 text-xs ${
-                  result?.href
+                className={`flex w-full items-center justify-center rounded-full border px-4 py-3 text-xs ${result?.href
                     ? "border-white/35 bg-white text-black"
                     : "border-white/10 bg-white/5 text-white/45"
-                }`}
+                  }`}
               >
                 {result?.href ? "Open generated flow" : "Generated flow appears here"}
               </Link>
             </div>
           </GlassCard>
 
-          {result ? (
+          {/* {result ? (
             <GlassCard className="border border-white/20">
               <div className="text-[11px] uppercase tracking-[0.26em] text-white/40">Generated result</div>
               <div className="mt-3 text-sm text-white/75">{result.summary}</div>
@@ -762,7 +798,7 @@ export default function CreateInvoicePage() {
                 </>
               ) : null}
             </GlassCard>
-          ) : null}
+          ) : null} */}
         </div>
       </div>
     </div>

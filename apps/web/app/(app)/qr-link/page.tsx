@@ -210,7 +210,7 @@ export default function QrLinkPage() {
         <GlassCard className="border border-white/20">
           <div className="mx-auto max-w-2xl text-center">
             <div className="text-[11px] uppercase tracking-[0.26em] text-white/40">Merchant setup required</div>
-            <div className="mt-3 text-xl font-semibold">Finish Settings before generating your QR</div>
+            <div className="mt-3 text-xl font-semibold">Complete profile setup before generating your QR</div>
             <div className="mt-3 text-sm text-white/60">
               Add your business name or display name in Settings first. That merchant identity is what customers will see when they scan your QR code.
             </div>
