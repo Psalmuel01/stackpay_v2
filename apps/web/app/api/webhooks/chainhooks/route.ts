@@ -133,11 +133,108 @@ function normalizeDecodedEvent(decoded: unknown) {
     return null;
   }
 
+  if ("repr" in decoded && typeof (decoded as Record<string, unknown>).repr === "string") {
+    return normalizeDecodedEvent((decoded as Record<string, unknown>).repr);
+  }
+
   return decoded as Record<string, unknown>;
+}
+
+function getEventEnvelope(payload: Record<string, unknown>) {
+  const eventRoot =
+    payload.event && typeof payload.event === "object"
+      ? (payload.event as Record<string, unknown>)
+      : payload;
+
+  return {
+    apply: Array.isArray(eventRoot.apply) ? (eventRoot.apply as Record<string, unknown>[]) : [],
+    rollback: Array.isArray(eventRoot.rollback) ? (eventRoot.rollback as Record<string, unknown>[]) : [],
+  };
+}
+
+function extractInvoicePaidEventsFromBlocks(
+  blocks: Record<string, unknown>[],
+  contractId: string
+) {
+  const results: Array<{
+    txId: string;
+    invoiceId: string;
+    receiptId: string;
+    payerWalletAddress: string | null;
+    merchantPrincipal: string | null;
+    amount: number | null;
+    currency: string | null;
+  }> = [];
+
+  for (const block of blocks) {
+    const transactions = Array.isArray(block.transactions) ? (block.transactions as Record<string, unknown>[]) : [];
+
+    for (const transaction of transactions) {
+      const txId = String(
+        getNestedValue(transaction, ["transaction_identifier", "hash"]) ??
+          getNestedValue(transaction, ["metadata", "tx_id"]) ??
+          ""
+      ).trim();
+      const operations = Array.isArray(transaction.operations)
+        ? (transaction.operations as Record<string, unknown>[])
+        : [];
+
+      for (const operation of operations) {
+        if (String(operation.type ?? "").trim() !== "contract_log") {
+          continue;
+        }
+
+        const contractIdentifier = String(
+          getNestedValue(operation, ["metadata", "contract_identifier"]) ??
+            operation.contract_identifier ??
+            ""
+        ).trim();
+
+        if (contractId && contractIdentifier !== contractId) {
+          continue;
+        }
+
+        const decoded = normalizeDecodedEvent(
+          unwrapClarityValue(getNestedValue(operation, ["metadata", "decoded_value"])) ??
+            unwrapClarityValue(getNestedValue(operation, ["metadata", "decodedValue"])) ??
+            unwrapClarityValue(getNestedValue(operation, ["metadata", "value"])) ??
+            unwrapClarityValue(operation.value)
+        );
+
+        if (!decoded || typeof decoded !== "object") {
+          continue;
+        }
+
+        const event = decoded as Record<string, unknown>;
+        if (String(event.event ?? "").trim() !== "invoice-paid") {
+          continue;
+        }
+
+        results.push({
+          txId,
+          invoiceId: String(event["invoice-id"] ?? "").trim(),
+          receiptId: String(event["receipt-id"] ?? "").trim(),
+          payerWalletAddress: String(event.payer ?? "").trim() || null,
+          merchantPrincipal: String(event.merchant ?? "").trim() || null,
+          amount: Number(event.amount ?? 0) || null,
+          currency: String(event.currency ?? "").trim() || null,
+        });
+      }
+    }
+  }
+
+  return results.filter((value) => Boolean(value.txId && value.invoiceId && value.receiptId));
 }
 
 function extractInvoicePaidEvents(payload: Record<string, unknown>) {
   const contractId = getArchitectureContractId();
+  const { apply, rollback } = getEventEnvelope(payload);
+  const operationMatches = extractInvoicePaidEventsFromBlocks([...apply, ...rollback], contractId);
+
+  if (operationMatches.length > 0) {
+    return operationMatches;
+  }
+
   const candidates = collectObjects(payload);
 
   return candidates
@@ -163,6 +260,7 @@ function extractInvoicePaidEvents(payload: Record<string, unknown>) {
             candidate.contractIdentifier ??
             candidate.smart_contract_id ??
             candidate.contract_id ??
+            getNestedValue(candidate, ["metadata", "contract_identifier"]) ??
             getNestedValue(candidate, ["data", "contract_identifier"]) ??
             getNestedValue(candidate, ["contract_event", "contract_identifier"]) ??
             getNestedValue(candidate, ["smart_contract_event", "contract_identifier"]) ??
@@ -176,10 +274,13 @@ function extractInvoicePaidEvents(payload: Record<string, unknown>) {
       const decoded = normalizeDecodedEvent(
         unwrapClarityValue(candidate.decoded_value) ??
           unwrapClarityValue(candidate.decodedValue) ??
+          unwrapClarityValue(getNestedValue(candidate, ["metadata", "decoded_value"])) ??
+          unwrapClarityValue(getNestedValue(candidate, ["metadata", "decodedValue"])) ??
           unwrapClarityValue(getNestedValue(candidate, ["data", "decoded_value"])) ??
           unwrapClarityValue(getNestedValue(candidate, ["data", "decodedValue"])) ??
           unwrapClarityValue(getNestedValue(candidate, ["contract_event", "decoded_value"])) ??
           unwrapClarityValue(getNestedValue(candidate, ["smart_contract_event", "decoded_value"])) ??
+          unwrapClarityValue(getNestedValue(candidate, ["metadata", "value"])) ??
           unwrapClarityValue(candidate.value) ??
           unwrapClarityValue(getNestedValue(candidate, ["data", "value"]))
       );
@@ -231,8 +332,8 @@ export async function POST(request: Request) {
 
   try {
     const payload = (await request.json()) as Record<string, unknown>;
-    const phase =
-      Array.isArray(payload.rollback) && payload.rollback.length > 0 ? "rollback" : "apply";
+    const envelope = getEventEnvelope(payload);
+    const phase = envelope.rollback.length > 0 ? "rollback" : "apply";
     const matches = extractInvoicePaidEvents(payload);
 
     const results = [];
@@ -265,13 +366,10 @@ export async function POST(request: Request) {
     if (matches.length === 0) {
       logTransactionResponse("chainhooks.webhook.unmatched", {
         topLevelKeys: Object.keys(payload),
-        applyCount: Array.isArray(payload.apply) ? payload.apply.length : 0,
-        rollbackCount: Array.isArray(payload.rollback) ? payload.rollback.length : 0,
-        sample: Array.isArray(payload.apply)
-          ? payload.apply[0]
-          : Array.isArray(payload.rollback)
-            ? payload.rollback[0]
-            : null,
+        eventKeys: payload.event && typeof payload.event === "object" ? Object.keys(payload.event as Record<string, unknown>) : [],
+        applyCount: envelope.apply.length,
+        rollbackCount: envelope.rollback.length,
+        sample: envelope.apply[0] ?? envelope.rollback[0] ?? null,
       });
     }
 

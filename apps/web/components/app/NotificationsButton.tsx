@@ -19,7 +19,35 @@ export default function NotificationsButton() {
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [open, setOpen] = useState(false);
+  const [toastNotification, setToastNotification] = useState<NotificationItem | null>(null);
   const ref = useRef<HTMLDivElement | null>(null);
+  const hasLoadedRef = useRef(false);
+  const seenIdsRef = useRef<Set<string>>(new Set());
+
+  function pingNotification() {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    try {
+      const audioContext = new window.AudioContext();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      oscillator.type = "sine";
+      oscillator.frequency.value = 880;
+      gainNode.gain.setValueAtTime(0.0001, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.05, audioContext.currentTime + 0.01);
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 0.18);
+      oscillator.start();
+      oscillator.stop(audioContext.currentTime + 0.2);
+      void audioContext.close().catch(() => {});
+    } catch {
+      // ignore autoplay/audio context issues
+    }
+  }
 
   useEffect(() => {
     setWalletAddress(getConnectedWalletAddress());
@@ -42,7 +70,28 @@ export default function NotificationsButton() {
         );
         const payload = await response.json();
         if (!response.ok || cancelled) return;
-        setNotifications((payload.data ?? []) as NotificationItem[]);
+        const nextNotifications = (payload.data ?? []) as NotificationItem[];
+
+        if (!hasLoadedRef.current) {
+          seenIdsRef.current = new Set(nextNotifications.map((item) => item.id));
+          hasLoadedRef.current = true;
+        } else {
+          const nextUnread = nextNotifications.find(
+            (item) => !item.read_at && !seenIdsRef.current.has(item.id)
+          );
+
+          if (nextUnread) {
+            setToastNotification(nextUnread);
+            pingNotification();
+            window.setTimeout(() => {
+              setToastNotification((current) => (current?.id === nextUnread.id ? null : current));
+            }, 5000);
+          }
+
+          seenIdsRef.current = new Set(nextNotifications.map((item) => item.id));
+        }
+
+        setNotifications(nextNotifications);
       } catch {
         // silently ignore — network error or API not yet available
       }
@@ -162,6 +211,26 @@ export default function NotificationsButton() {
               </div>
             )}
           </div>
+        </div>
+      ) : null}
+
+      {toastNotification ? (
+        <div className="absolute right-0 top-[calc(100%+88px)] w-80 rounded-3xl border border-emerald-300/30 bg-[#07110c]/95 p-4 text-white shadow-[0_20px_60px_rgba(0,0,0,0.45)] backdrop-blur">
+          <div className="text-[11px] uppercase tracking-[0.24em] text-emerald-300/80">New payment</div>
+          <div className="mt-2 text-sm font-medium">{toastNotification.title}</div>
+          <div className="mt-1 text-sm text-white/65">{toastNotification.body}</div>
+          {toastNotification.href ? (
+            <Link
+              href={toastNotification.href}
+              onClick={() => {
+                setToastNotification(null);
+                setOpen(false);
+              }}
+              className="mt-3 inline-flex text-xs text-emerald-300 underline underline-offset-4"
+            >
+              Open
+            </Link>
+          ) : null}
         </div>
       ) : null}
     </div>
