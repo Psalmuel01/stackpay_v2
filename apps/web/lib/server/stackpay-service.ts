@@ -44,11 +44,12 @@ type CreatePaymentLinkInput = {
   kind: "multipay";
   recipientAddress?: string;
   slug?: string;
-  title: string;
+  title?: string;
   description?: string;
   defaultCurrency?: Currency;
   acceptedCurrencies?: Currency[];
   defaultAmount?: number | null;
+  suggestedAmounts?: number[];
   amountStep?: number | null;
   allowCustomAmount?: boolean;
   metadata?: Record<string, unknown>;
@@ -170,12 +171,17 @@ function ensurePositiveAmount(amount: number, fieldName: string) {
   }
 }
 
-function buildAcceptedCurrencies(defaultCurrency?: Currency, acceptedCurrencies?: Currency[]) {
-  if (acceptedCurrencies?.length) {
-    return [...new Set(acceptedCurrencies)];
+function normalizeSuggestedAmounts(values: number[] | undefined) {
+  const unique = new Set<number>();
+
+  for (const value of values ?? []) {
+    const numeric = Number(value);
+    if (Number.isFinite(numeric) && numeric > 0) {
+      unique.add(numeric);
+    }
   }
 
-  return defaultCurrency ? [defaultCurrency] : ["sBTC", "STX", "USDCx"];
+  return Array.from(unique).slice(0, 3);
 }
 
 async function recordActivity(
@@ -581,24 +587,39 @@ export async function createPaymentLinkDraft(input: CreatePaymentLinkInput) {
   assertMerchantSetupReady(merchant);
   const ensuredMerchant = merchant as Row;
   const merchantBaseSlug = slugify(String(ensuredMerchant.slug ?? ensuredMerchant.company_name ?? ""));
-  const slug = slugify(input.slug || `${merchantBaseSlug}-${input.kind}`);
-  const acceptedCurrencies = buildAcceptedCurrencies(input.defaultCurrency, input.acceptedCurrencies);
   const recipientAddress =
     input.recipientAddress?.trim() ||
     String(ensuredMerchant.settlement_wallet || input.walletAddress);
   const defaultCurrency = input.defaultCurrency ?? "sBTC";
+  const suggestedAmounts = normalizeSuggestedAmounts(input.suggestedAmounts);
+  const pricingMode = suggestedAmounts.length > 0 ? "suggested" : "fixed";
+  const fixedAmount = Number(input.defaultAmount ?? 0);
+
+  if (input.kind === "multipay" && suggestedAmounts.length === 0 && fixedAmount <= 0) {
+    throw new Error("MultiPay requires a fixed amount or at least one suggested amount.");
+  }
+
+  const slugSource = input.description?.trim() || input.title?.trim() || "pay";
+  const slug = makeSlugWithSuffix(`${merchantBaseSlug}-${slugSource}`);
+  const title =
+    input.title?.trim() ||
+    input.description?.trim() ||
+    `${merchantDisplayName(ensuredMerchant) || "Merchant"} payment`;
+  const description = input.description?.trim() || title;
+
   const contractIntent: ContractIntent = buildCreateMultipayLinkIntent({
     recipientAddress,
     slug,
-    title: input.title,
-    description: input.description ?? "",
+    title,
+    description,
     defaultCurrency,
-    defaultAmount: input.defaultAmount ?? null,
-    amountStep: input.amountStep ?? null,
-    allowCustomAmount: input.allowCustomAmount ?? true,
-    acceptsStx: acceptedCurrencies.includes("STX"),
-    acceptsSbtc: acceptedCurrencies.includes("sBTC"),
-    acceptsUsdcx: acceptedCurrencies.includes("USDCx"),
+    defaultAmount: suggestedAmounts[0] ?? (fixedAmount > 0 ? fixedAmount : null),
+    suggestedAmounts,
+    amountStep: null,
+    allowCustomAmount: false,
+    acceptsStx: defaultCurrency === "STX",
+    acceptsSbtc: defaultCurrency === "sBTC",
+    acceptsUsdcx: defaultCurrency === "USDCx",
   });
 
   const linkKey = makeEntityKey("LNK");
@@ -607,19 +628,23 @@ export async function createPaymentLinkDraft(input: CreatePaymentLinkInput) {
     link_key: linkKey,
     kind: input.kind,
     slug,
-    title: input.title,
-    description: input.description ?? "",
+    title,
+    description,
     linked_invoice_id: null,
     linked_subscription_plan_id: null,
-    default_currency: input.defaultCurrency ?? null,
-    accepted_currencies: acceptedCurrencies,
-    default_amount: input.defaultAmount ?? null,
-    amount_step: input.amountStep ?? null,
-    allow_custom_amount: input.allowCustomAmount ?? input.kind === "multipay",
+    default_currency: defaultCurrency,
+    accepted_currencies: [defaultCurrency],
+    default_amount: suggestedAmounts[0] ?? (fixedAmount > 0 ? fixedAmount : null),
+    amount_step: null,
+    allow_custom_amount: false,
     is_universal: false,
     is_active: true,
     draft_contract_call: contractIntent,
-    metadata: input.metadata ?? {},
+    metadata: {
+      ...(input.metadata ?? {}),
+      pricingMode,
+      suggestedAmounts,
+    },
   });
 
   await recordActivity(ensuredMerchant.id as string, "payment_link", paymentLink.id as string, "payment_link.draft.created", {
@@ -809,6 +834,26 @@ export async function preparePublicInvoiceFromLink(input: PreparePublicInvoiceFr
 
   const defaultAmount = Number(paymentLink.default_amount ?? 0);
   const allowCustomAmount = Boolean(paymentLink.allow_custom_amount);
+  const isMultipay = String(paymentLink.kind) === "multipay" && !Boolean(paymentLink.is_universal);
+  const defaultCurrency = (paymentLink.default_currency as Currency | null | undefined) ?? null;
+  const suggestedAmounts = normalizeSuggestedAmounts(
+    ((paymentLink.metadata as Record<string, unknown> | null)?.suggestedAmounts as number[] | undefined) ?? []
+  );
+  if (isMultipay) {
+    if (!defaultCurrency) {
+      throw new Error("MultiPay link is missing its fixed currency.");
+    }
+    if (input.currency !== defaultCurrency) {
+      throw new Error("This MultiPay link uses a fixed currency.");
+    }
+    if (suggestedAmounts.length > 0) {
+      if (!suggestedAmounts.includes(Number(input.amount))) {
+        throw new Error("Choose one of the suggested amounts for this payment link.");
+      }
+    } else if (!(defaultAmount > 0) || Number(input.amount) !== defaultAmount) {
+      throw new Error("This MultiPay link uses a fixed amount.");
+    }
+  }
   if (defaultAmount > 0 && !allowCustomAmount && Number(input.amount) !== defaultAmount) {
     throw new Error("This payment link uses a fixed amount.");
   }
@@ -816,7 +861,9 @@ export async function preparePublicInvoiceFromLink(input: PreparePublicInvoiceFr
   const expiresInSeconds =
     input.expiresInSeconds && input.expiresInSeconds > 0 ? input.expiresInSeconds : 86_400;
   const description = String(
-    input.description?.trim() || paymentLink.description || paymentLink.title || "Payment via StackPay"
+    isMultipay
+      ? paymentLink.description || paymentLink.title || "Payment via StackPay"
+      : input.description?.trim() || paymentLink.description || paymentLink.title || "Payment via StackPay"
   ).trim();
   const contractIntent = buildCreatePublicInvoiceFromLinkIntent({
     onchainLinkId: String(paymentLink.onchain_link_id),

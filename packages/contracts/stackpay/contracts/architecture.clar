@@ -92,6 +92,9 @@
     description: (string-utf8 256),
     default-currency: (optional (string-ascii 10)),
     default-amount: (optional uint),
+    suggested-amount-1: (optional uint),
+    suggested-amount-2: (optional uint),
+    suggested-amount-3: (optional uint),
     amount-step: (optional uint),
     allow-custom-amount: bool,
     accepts-stx: bool,
@@ -117,6 +120,46 @@
     (match (var-get processor)
       configured-processor (is-eq contract-caller configured-processor)
       false
+    )
+  )
+)
+
+(define-private (any-suggested-amount
+    (suggested-amount-1 (optional uint))
+    (suggested-amount-2 (optional uint))
+    (suggested-amount-3 (optional uint))
+  )
+  (or
+    (is-some suggested-amount-1)
+    (or (is-some suggested-amount-2) (is-some suggested-amount-3))
+  )
+)
+
+(define-private (valid-suggested-amounts
+    (suggested-amount-1 (optional uint))
+    (suggested-amount-2 (optional uint))
+    (suggested-amount-3 (optional uint))
+  )
+  (and
+    (match suggested-amount-1 value (> value u0) true)
+    (and
+      (match suggested-amount-2 value (> value u0) true)
+      (match suggested-amount-3 value (> value u0) true)
+    )
+  )
+)
+
+(define-private (amount-in-suggestions
+    (amount uint)
+    (suggested-amount-1 (optional uint))
+    (suggested-amount-2 (optional uint))
+    (suggested-amount-3 (optional uint))
+  )
+  (or
+    (match suggested-amount-1 value (is-eq amount value) false)
+    (or
+      (match suggested-amount-2 value (is-eq amount value) false)
+      (match suggested-amount-3 value (is-eq amount value) false)
     )
   )
 )
@@ -278,6 +321,9 @@
     (description (string-utf8 256))
     (default-currency (optional (string-ascii 10)))
     (default-amount (optional uint))
+    (suggested-amount-1 (optional uint))
+    (suggested-amount-2 (optional uint))
+    (suggested-amount-3 (optional uint))
     (amount-step (optional uint))
     (allow-custom-amount bool)
     (accepts-stx bool)
@@ -287,28 +333,32 @@
   (let (
       (link-id (new-payment-link-id))
       (now (current-time))
+      (currency (unwrap! default-currency ERR_INVALID_INPUT))
+      (fixed-amount (unwrap! default-amount ERR_INVALID_INPUT))
     )
     (asserts! (valid-principal recipient) ERR_INVALID_PRINCIPAL)
     (asserts! (is-none (map-get? payment-link-slugs { slug: slug })) ERR_INVALID_INPUT)
+    (asserts! (not allow-custom-amount) ERR_INVALID_INPUT)
+    (asserts! (is-none amount-step) ERR_INVALID_INPUT)
+    (asserts! (valid-currency currency) ERR_INVALID_INPUT)
+    (asserts! (valid-suggested-amounts suggested-amount-1 suggested-amount-2 suggested-amount-3) ERR_INVALID_AMOUNT)
+    (asserts! (currency-enabled currency accepts-stx accepts-sbtc accepts-usdcx) ERR_INVALID_INPUT)
     (asserts!
-      (or accepts-stx (or accepts-sbtc accepts-usdcx))
+      (if (is-eq currency CURRENCY_STX)
+        (and accepts-stx (and (not accepts-sbtc) (not accepts-usdcx)))
+        (if (is-eq currency CURRENCY_SBTC)
+          (and accepts-sbtc (and (not accepts-stx) (not accepts-usdcx)))
+          (and accepts-usdcx (and (not accepts-stx) (not accepts-sbtc)))
+        )
+      )
       ERR_INVALID_INPUT
     )
-    (match default-currency
-      currency
-        (begin
-          (asserts! (valid-currency currency) ERR_INVALID_INPUT)
-          (asserts! (currency-enabled currency accepts-stx accepts-sbtc accepts-usdcx) ERR_INVALID_INPUT)
-        )
-      true
-    )
-    (match default-amount
-      next-amount (asserts! (> next-amount u0) ERR_INVALID_AMOUNT)
-      true
-    )
-    (match amount-step
-      step (asserts! (> step u0) ERR_INVALID_AMOUNT)
-      true
+    (asserts!
+      (or
+        (> fixed-amount u0)
+        (any-suggested-amount suggested-amount-1 suggested-amount-2 suggested-amount-3)
+      )
+      ERR_INVALID_AMOUNT
     )
     (map-set payment-links { link-id: link-id } {
       merchant: tx-sender,
@@ -317,8 +367,11 @@
       kind: LINK_KIND_MULTIPAY,
       title: title,
       description: description,
-      default-currency: default-currency,
-      default-amount: default-amount,
+      default-currency: (some currency),
+      default-amount: (some fixed-amount),
+      suggested-amount-1: suggested-amount-1,
+      suggested-amount-2: suggested-amount-2,
+      suggested-amount-3: suggested-amount-3,
       amount-step: amount-step,
       allow-custom-amount: allow-custom-amount,
       accepts-stx: accepts-stx,
@@ -364,6 +417,9 @@
       description: description,
       default-currency: none,
       default-amount: none,
+      suggested-amount-1: none,
+      suggested-amount-2: none,
+      suggested-amount-3: none,
       amount-step: none,
       allow-custom-amount: true,
       accepts-stx: true,
@@ -400,13 +456,36 @@
       (currency-enabled currency (get accepts-stx link) (get accepts-sbtc link) (get accepts-usdcx link))
       ERR_INVALID_INPUT
     )
-    (match (get default-amount link)
-      default-amount
-        (if (get allow-custom-amount link)
-          true
-          (asserts! (is-eq amount default-amount) ERR_INVALID_AMOUNT)
+    (if (is-eq (get kind link) LINK_KIND_MULTIPAY)
+      (begin
+        (asserts! (not (get allow-custom-amount link)) ERR_INVALID_INPUT)
+        (asserts! (is-eq (some currency) (get default-currency link)) ERR_INVALID_INPUT)
+        (if
+          (any-suggested-amount
+            (get suggested-amount-1 link)
+            (get suggested-amount-2 link)
+            (get suggested-amount-3 link)
+          )
+          (asserts!
+            (amount-in-suggestions
+              amount
+              (get suggested-amount-1 link)
+              (get suggested-amount-2 link)
+              (get suggested-amount-3 link)
+            )
+            ERR_INVALID_AMOUNT
+          )
+          (asserts! (is-eq (some amount) (get default-amount link)) ERR_INVALID_AMOUNT)
         )
-      true
+      )
+      (match (get default-amount link)
+        default-amount
+          (if (get allow-custom-amount link)
+            true
+            (asserts! (is-eq amount default-amount) ERR_INVALID_AMOUNT)
+          )
+        true
+      )
     )
     (ok (store-invoice
       (get merchant link)
@@ -414,7 +493,7 @@
       amount
       currency
       expires-in-seconds
-      (if (is-eq description u"")
+      (if (or (is-eq (get kind link) LINK_KIND_MULTIPAY) (is-eq description u""))
         (get title link)
         description
       )

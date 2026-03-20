@@ -76,6 +76,7 @@ export function buildCreateMultipayLinkIntent(input: {
   description: string;
   defaultCurrency: Currency;
   defaultAmount: number | null;
+  suggestedAmounts: number[];
   amountStep: number | null;
   allowCustomAmount: boolean;
   acceptsStx: boolean;
@@ -96,6 +97,24 @@ export function buildCreateMultipayLinkIntent(input: {
       {
         type: "optional-uint",
         value: input.defaultAmount ? toAtomicAmount(input.defaultAmount, input.defaultCurrency) : null,
+      },
+      {
+        type: "optional-uint",
+        value: input.suggestedAmounts[0]
+          ? toAtomicAmount(input.suggestedAmounts[0], input.defaultCurrency)
+          : null,
+      },
+      {
+        type: "optional-uint",
+        value: input.suggestedAmounts[1]
+          ? toAtomicAmount(input.suggestedAmounts[1], input.defaultCurrency)
+          : null,
+      },
+      {
+        type: "optional-uint",
+        value: input.suggestedAmounts[2]
+          ? toAtomicAmount(input.suggestedAmounts[2], input.defaultCurrency)
+          : null,
       },
       {
         type: "optional-uint",

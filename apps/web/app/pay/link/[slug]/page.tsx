@@ -1,6 +1,4 @@
 "use client";
-
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import GlassCard from "@/components/GlassCard";
@@ -24,6 +22,10 @@ type RemotePaymentLink = {
     display_name?: string;
     settlement_wallet?: string;
   } | null;
+  metadata?: {
+    pricingMode?: "fixed" | "suggested";
+    suggestedAmounts?: number[];
+  } | null;
 };
 
 function defaultAmountConfig(currency: Currency) {
@@ -34,11 +36,6 @@ function defaultAmountConfig(currency: Currency) {
     return { defaultAmount: 50, amountStep: 25 };
   }
   return { defaultAmount: 25, amountStep: 25 };
-}
-
-function normalizeAmount(value: number, step: number, delta: number) {
-  const next = value + step * delta;
-  return Math.max(step > 0 ? step : 0.001, Math.round(next * 1000) / 1000);
 }
 
 function truncateAddress(address: string) {
@@ -110,6 +107,14 @@ export default function PublicPaymentLinkPage({
   }, [params.slug]);
 
   const availableCurrencies = remoteLink?.accepted_currencies ?? [];
+  const suggestedAmounts = useMemo(
+    () =>
+      ((remoteLink?.metadata?.suggestedAmounts ?? []) as number[])
+        .map((value) => Number(value))
+        .filter((value) => Number.isFinite(value) && value > 0),
+    [remoteLink?.metadata?.suggestedAmounts]
+  );
+  const isSuggestedMultipay = Boolean(!remoteLink?.is_universal && suggestedAmounts.length > 0);
 
   useEffect(() => {
     if (!remoteLink) {
@@ -119,8 +124,8 @@ export default function PublicPaymentLinkPage({
     const initialCurrency = (availableCurrencies[0] ?? remoteLink.default_currency ?? "sBTC") as Currency;
     const defaults = defaultAmountConfig(initialCurrency);
     setSelectedCurrency(initialCurrency);
-    setAmount(String(remoteLink.default_amount ?? defaults.defaultAmount));
-  }, [availableCurrencies, remoteLink]);
+    setAmount(String(suggestedAmounts[0] ?? remoteLink.default_amount ?? defaults.defaultAmount));
+  }, [availableCurrencies, remoteLink, suggestedAmounts]);
 
   const amountStep = remoteLink?.amount_step ?? defaultAmountConfig(selectedCurrency).amountStep;
   const merchantName =
@@ -135,13 +140,10 @@ export default function PublicPaymentLinkPage({
 
     return remoteLink.is_universal
       ? "Enter any amount, choose an asset, and pay from the same permanent route."
-      : "Choose an amount, generate a fresh invoice, and continue into hosted checkout.";
-  }, [remoteLink]);
-
-  function adjustAmount(delta: number) {
-    const base = Number(amount || remoteLink?.default_amount || defaultAmountConfig(selectedCurrency).defaultAmount || 0);
-    setAmount(String(normalizeAmount(base, amountStep, delta)));
-  }
+      : isSuggestedMultipay
+        ? "Choose one of the preset amounts and continue straight into payment."
+        : "This reusable payment route uses one exact amount and description for every purchase.";
+  }, [isSuggestedMultipay, remoteLink]);
 
   async function handleContinue() {
     if (!remoteLink) {
@@ -149,7 +151,7 @@ export default function PublicPaymentLinkPage({
     }
 
     if (!connectedAddress) {
-      setError("Connect a wallet before generating an invoice.");
+      setError(remoteLink.is_universal ? "Connect a wallet before generating an invoice." : "Connect a wallet before continuing to payment.");
       setSuccessMessage(null);
       return;
     }
@@ -226,7 +228,11 @@ export default function PublicPaymentLinkPage({
               }
 
               if (confirmPayload.data?.sync?.status === "success" && confirmPayload.data?.sync?.onchainInvoiceId) {
-                setSuccessMessage("Invoice generated successfully. Redirecting to checkout...");
+                setSuccessMessage(
+                  remoteLink.is_universal
+                    ? "Invoice generated successfully. Redirecting to checkout..."
+                    : "Secure checkout is ready. Redirecting now..."
+                );
                 router.push(`/pay/${confirmPayload.data.sync.onchainInvoiceId}`);
                 return;
               }
@@ -324,7 +330,9 @@ export default function PublicPaymentLinkPage({
 
         <GlassCard className="border border-white/20">
           <div className="text-[11px] uppercase tracking-[0.26em] text-white/40">Checkout</div>
-          <div className="mt-2 text-2xl font-semibold text-white">Generate invoice</div>
+          <div className="mt-2 text-2xl font-semibold text-white">
+            {remoteLink.is_universal ? "Generate invoice" : "Pay now"}
+          </div>
 
           <div className="mt-4 text-sm text-white/60">
             {connectedAddress ? `Connected wallet ${connectedAddress}` : "Connect a Stacks wallet to continue."}
@@ -343,7 +351,11 @@ export default function PublicPaymentLinkPage({
                       key={item}
                       onClick={() => {
                         setSelectedCurrency(item);
-                        setAmount(String(remoteLink.default_amount ?? defaultAmountConfig(item).defaultAmount));
+                        setAmount(
+                          String(
+                            suggestedAmounts[0] ?? remoteLink.default_amount ?? defaultAmountConfig(item).defaultAmount
+                          )
+                        );
                       }}
                       className={`rounded-full px-4 py-3 text-sm transition ${
                         selectedCurrency === item
@@ -360,32 +372,65 @@ export default function PublicPaymentLinkPage({
 
             <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
               <div className="text-[11px] uppercase tracking-[0.22em] text-white/40">Amount</div>
-              <div className="mt-3 flex items-center gap-3">
-                <button
-                  onClick={() => adjustAmount(-1)}
-                  className="h-12 w-12 rounded-full border border-white/10 bg-black/20 text-xl text-white/75"
-                >
-                  -
-                </button>
-                <div className="flex-1 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-center text-lg font-semibold text-white">
+              {remoteLink.is_universal ? (
+                <>
+                  <div className="mt-3 flex items-center gap-3">
+                    <button
+                      onClick={() => {
+                        const base = Number(amount || remoteLink.default_amount || defaultAmountConfig(selectedCurrency).defaultAmount || 0);
+                        const next = Math.max(amountStep > 0 ? amountStep : 0.001, Math.round((base - amountStep) * 1000) / 1000);
+                        setAmount(String(next));
+                      }}
+                      className="h-12 w-12 rounded-full border border-white/10 bg-black/20 text-xl text-white/75"
+                    >
+                      -
+                    </button>
+                    <div className="flex-1 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-center text-lg font-semibold text-white">
+                      {amount ? formatCurrencyAmount(Number(amount), selectedCurrency) : `0 ${selectedCurrency}`}
+                    </div>
+                    <button
+                      onClick={() => {
+                        const base = Number(amount || remoteLink.default_amount || defaultAmountConfig(selectedCurrency).defaultAmount || 0);
+                        const next = Math.max(amountStep > 0 ? amountStep : 0.001, Math.round((base + amountStep) * 1000) / 1000);
+                        setAmount(String(next));
+                      }}
+                      className="h-12 w-12 rounded-full border border-white/10 bg-black/20 text-xl text-white/75"
+                    >
+                      +
+                    </button>
+                  </div>
+                  {remoteLink.allow_custom_amount ? (
+                    <input
+                      className="mt-3 w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white/75 outline-none"
+                      value={amount}
+                      onChange={(event) => setAmount(sanitizeDecimalInput(event.target.value))}
+                      placeholder={`Enter amount in ${selectedCurrency}`}
+                      inputMode="decimal"
+                    />
+                  ) : null}
+                </>
+              ) : isSuggestedMultipay ? (
+                <div className="mt-3 grid gap-2">
+                  {suggestedAmounts.map((suggestedAmount) => (
+                    <button
+                      key={suggestedAmount}
+                      type="button"
+                      onClick={() => setAmount(String(suggestedAmount))}
+                      className={`rounded-2xl border px-4 py-3 text-left text-sm transition ${
+                        Number(amount) === suggestedAmount
+                          ? "border-white/20 bg-white text-black"
+                          : "border-white/10 bg-black/20 text-white/80"
+                      }`}
+                    >
+                      {formatCurrencyAmount(suggestedAmount, selectedCurrency)}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-4 text-center text-lg font-semibold text-white">
                   {amount ? formatCurrencyAmount(Number(amount), selectedCurrency) : `0 ${selectedCurrency}`}
                 </div>
-                <button
-                  onClick={() => adjustAmount(1)}
-                  className="h-12 w-12 rounded-full border border-white/10 bg-black/20 text-xl text-white/75"
-                >
-                  +
-                </button>
-              </div>
-              {remoteLink.allow_custom_amount ? (
-                <input
-                  className="mt-3 w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white/75 outline-none"
-                  value={amount}
-                  onChange={(event) => setAmount(sanitizeDecimalInput(event.target.value))}
-                  placeholder={`Enter amount in ${selectedCurrency}`}
-                  inputMode="decimal"
-                />
-              ) : null}
+              )}
             </div>
 
             <input
@@ -396,19 +441,21 @@ export default function PublicPaymentLinkPage({
               placeholder="Receipt email (optional)"
               autoComplete="email"
             />
-            <input
-              className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/75 outline-none"
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-              placeholder="Description (optional)"
-            />
+            {remoteLink.is_universal ? (
+              <input
+                className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/75 outline-none"
+                value={description}
+                onChange={(event) => setDescription(event.target.value)}
+                placeholder="Description (optional)"
+              />
+            ) : null}
 
             <button
               onClick={() => void handleContinue()}
               disabled={submitting}
               className="w-full rounded-full border border-white/20 bg-white px-5 py-3 text-sm font-semibold text-black disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {submitting ? "Generating..." : "Generate invoice"}
+              {submitting ? "Generating..." : remoteLink.is_universal ? "Generate invoice" : "Continue to payment"}
             </button>
             {successMessage ? <div className="text-sm text-emerald-300">{successMessage}</div> : null}
             {error ? <div className="text-sm text-red-300">{error}</div> : null}

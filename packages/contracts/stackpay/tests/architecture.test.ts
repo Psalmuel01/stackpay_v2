@@ -49,11 +49,14 @@ describe("architecture", () => {
         Cl.principal(recipient),
         stringAsciiCV("merchant-pay"),
         stringUtf8CV("Merchant Pay"),
-        stringUtf8CV("Universal support"),
+        stringUtf8CV("Book purchase"),
         Cl.some(Cl.stringAscii("STX")),
         Cl.some(Cl.uint(1000)),
         noneCV(),
-        Cl.bool(true),
+        noneCV(),
+        noneCV(),
+        noneCV(),
+        Cl.bool(false),
         Cl.bool(true),
         Cl.bool(false),
         Cl.bool(false),
@@ -70,9 +73,9 @@ describe("architecture", () => {
       [
         stringAsciiCV(linkId),
         stringAsciiCV("STX"),
-        uintCV(1500),
+        uintCV(1000),
         uintCV(7200),
-        stringUtf8CV("Community contribution"),
+        stringUtf8CV("Different description"),
       ],
       customer
     );
@@ -85,10 +88,59 @@ describe("architecture", () => {
     );
     expect(invoice.merchant.value).toBe(merchant);
     expect(invoice.recipient.value).toBe(recipient);
-    expect(invoice.amount.value).toBe("1500");
+    expect(invoice.amount.value).toBe("1000");
     expect(invoice.currency.value).toBe("STX");
     expect(invoice.status.value).toBe("0");
-    expect(invoice.description.value).toBe("Community contribution");
+    expect(invoice.description.value).toBe("Merchant Pay");
+  });
+
+  it("creates public invoices from multipay suggested amounts", () => {
+    const linkCreated = simnet.callPublicFn(
+      "architecture",
+      "create-multipay-link",
+      [
+        Cl.principal(recipient),
+        stringAsciiCV("merchant-book"),
+        stringUtf8CV("Merchant Book"),
+        stringUtf8CV("Digital book"),
+        Cl.some(Cl.stringAscii("STX")),
+        Cl.some(Cl.uint(500)),
+        Cl.some(Cl.uint(500)),
+        Cl.some(Cl.uint(900)),
+        noneCV(),
+        noneCV(),
+        Cl.bool(false),
+        Cl.bool(true),
+        Cl.bool(false),
+        Cl.bool(false),
+      ],
+      merchant
+    );
+
+    const linkId = cvToValue(linkCreated.result.value) as string;
+    expect(linkCreated.result).toBeOk(Cl.stringAscii(linkId));
+
+    const invoiceCreated = simnet.callPublicFn(
+      "architecture",
+      "create-public-invoice-from-link",
+      [
+        stringAsciiCV(linkId),
+        stringAsciiCV("STX"),
+        uintCV(900),
+        uintCV(7200),
+        stringUtf8CV("Ignored"),
+      ],
+      customer
+    );
+
+    const invoiceId = cvToValue(invoiceCreated.result.value) as string;
+    expect(invoiceCreated.result).toBeOk(Cl.stringAscii(invoiceId));
+
+    const invoice = unwrapSomeOk(
+      simnet.callReadOnlyFn("architecture", "get-invoice", [stringAsciiCV(invoiceId)], merchant)
+    );
+    expect(invoice.amount.value).toBe("900");
+    expect(invoice.description.value).toBe("Merchant Book");
   });
 
   it("marks invoice views expired when time has elapsed", () => {

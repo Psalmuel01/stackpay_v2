@@ -14,6 +14,7 @@ import {
 
 type CreateFlow = "standard" | "multipay";
 type ExpirationOption = number | "custom";
+type MultiPayPricingMode = "fixed" | "suggested";
 
 type MerchantProfile = {
   settlement_wallet?: string | null;
@@ -44,14 +45,6 @@ const expirations = [
   { label: "30d", hours: 24 * 30 },
   { label: "Custom", hours: "custom" as const },
 ];
-
-function slugify(value: string) {
-  return value
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
 
 function truncateAddress(address: string) {
   if (address.length <= 12) {
@@ -86,9 +79,8 @@ export default function CreateInvoicePage() {
   const [customer, setCustomer] = useState("");
   const [email, setEmail] = useState("");
   const [description, setDescription] = useState("");
-  const [title, setTitle] = useState("");
-  const [slug, setSlug] = useState("");
-  const [amountStep, setAmountStep] = useState("");
+  const [multiPayPricingMode, setMultiPayPricingMode] = useState<MultiPayPricingMode>("fixed");
+  const [suggestedAmounts, setSuggestedAmounts] = useState(["", "", ""]);
   const [merchantProfile, setMerchantProfile] = useState<MerchantProfile | null>(null);
   const [result, setResult] = useState<{
     title: string;
@@ -154,17 +146,13 @@ export default function CreateInvoicePage() {
     if (result?.href) {
       return result.href.replace(/^\//, "stackpay.app/");
     }
-    if (flow === "multipay") {
-      const previewSlug = slugify(slug || `${merchantProfile?.slug || ""}-multipay`);
-      return previewSlug
-        ? `stackpay.app/pay/link/${previewSlug}`
-        : "Generated payment link appears after confirmation";
-    }
     if (result?.txId && !result?.href) {
-      return "Waiting for confirmed invoice link";
+      return flow === "standard" ? "Waiting for confirmed invoice link" : "Waiting for confirmed payment link";
     }
-    return "Generated invoice link appears after confirmation";
-  }, [flow, result, slug]);
+    return flow === "standard"
+      ? "Generated invoice link appears after confirmation"
+      : "Generated payment link appears after confirmation";
+  }, [flow, result]);
 
   async function handleCopy() {
     if (!result?.href) {
@@ -181,10 +169,15 @@ export default function CreateInvoicePage() {
     setCustomer("");
     setEmail("");
     setDescription("");
-    setTitle("");
-    setSlug("");
-    setAmountStep("");
+    setMultiPayPricingMode("fixed");
+    setSuggestedAmounts(["", "", ""]);
     setCustomExpirationValue("");
+  }
+
+  function updateSuggestedAmount(index: number, value: string) {
+    setSuggestedAmounts((current) =>
+      current.map((entry, entryIndex) => (entryIndex === index ? sanitizeDecimalInput(value) : entry))
+    );
   }
 
   async function confirmInvoiceFromChain(input: {
@@ -405,14 +398,25 @@ export default function CreateInvoicePage() {
       return;
     }
 
-    if (email.trim() && !isValidEmail(email.trim())) {
-      setError("Enter a valid email address.");
-      return;
-    }
-
     setSubmitting(true);
 
     try {
+      const numericAmount = Number(amount || 0);
+      const normalizedSuggestedAmounts =
+        multiPayPricingMode === "suggested"
+          ? suggestedAmounts
+              .map((value) => Number(value || 0))
+              .filter((value, index, values) => Number.isFinite(value) && value > 0 && values.indexOf(value) === index)
+          : [];
+
+      if (multiPayPricingMode === "fixed") {
+        if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+          throw new Error("Enter a valid fixed amount for MultiPay.");
+        }
+      } else if (normalizedSuggestedAmounts.length === 0) {
+        throw new Error("Add at least one suggested amount for MultiPay.");
+      }
+
       const response = await fetch("/api/payment-links", {
         method: "POST",
         headers: {
@@ -422,14 +426,15 @@ export default function CreateInvoicePage() {
           walletAddress: connectedAddress,
           kind: "multipay",
           recipientAddress: resolvedRecipientAddress,
-          slug: slugify(slug || `${merchantProfile?.slug || ""}-multipay`),
-          title: title || "MultiPay route",
           description,
           defaultCurrency: currency,
           acceptedCurrencies: [currency],
-          defaultAmount: Number(amount || 0) || null,
-          amountStep: Number(amountStep || 0) || null,
-          allowCustomAmount: true,
+          defaultAmount: multiPayPricingMode === "fixed" ? numericAmount : null,
+          suggestedAmounts: multiPayPricingMode === "suggested" ? normalizedSuggestedAmounts : [],
+          allowCustomAmount: false,
+          metadata: {
+            pricingMode: multiPayPricingMode,
+          },
         }),
       });
 
@@ -460,12 +465,12 @@ export default function CreateInvoicePage() {
             setResult({
               title: chainLink?.onchain_link_id ?? paymentLink.slug,
               href: `/pay/link/${paymentLink.slug}`,
-              summary: "MultiPay route created and stored. Customers can now use this public route to generate invoices and pay.",
+              summary: "Payment link created and stored. Customers can now open the public route and pay from it anytime.",
               contractIntent,
               storage: "Supabase + Stacks",
               txId,
             });
-            setSuccessMessage("MultiPay route created successfully.");
+            setSuccessMessage("Payment link created successfully.");
             resetCreateForm();
           } catch (syncError) {
             setError(syncError instanceof Error ? syncError.message : "Failed to confirm payment link.");
@@ -495,7 +500,11 @@ export default function CreateInvoicePage() {
                 {flows.map((item) => (
                   <button
                     key={item.id}
-                    onClick={() => setFlow(item.id)}
+                    onClick={() => {
+                      setFlow(item.id);
+                      setError(null);
+                      setSuccessMessage(null);
+                    }}
                     className={`rounded-full px-4 py-2 text-sm transition ${flow === item.id
                         ? "border border-white/20 bg-white text-black"
                         : "border border-white/10 bg-white/5 text-white/70 hover:border-white/30"
@@ -513,14 +522,20 @@ export default function CreateInvoicePage() {
             <div className="grid gap-4 md:grid-cols-2">
               <div>
                 <label className="text-xs uppercase tracking-[0.24em] text-white/40">
-                  {flow === "multipay" ? "Default amount" : "Amount"}
+                  {flow === "multipay" && multiPayPricingMode === "suggested" ? "Fallback amount" : "Amount"}
                 </label>
                 <div className="mt-2 flex items-center rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
                   <input
                     className="w-full bg-transparent text-sm text-white/80 outline-none"
                     value={amount}
                     onChange={(event) => setAmount(sanitizeDecimalInput(event.target.value))}
-                    placeholder={flow === "multipay" ? "Starting checkout amount" : "Invoice amount"}
+                    placeholder={
+                      flow === "multipay"
+                        ? multiPayPricingMode === "suggested"
+                          ? "Optional default shown first"
+                          : "Fixed payment amount"
+                        : "Invoice amount"
+                    }
                     inputMode="decimal"
                   />
                   <span className="text-xs text-white/55">{currency}</span>
@@ -634,35 +649,26 @@ export default function CreateInvoicePage() {
               <>
                 <div className="grid gap-4 md:grid-cols-2">
                   <div>
-                    <label className="text-xs uppercase tracking-[0.24em] text-white/40">Link title</label>
-                    <input
-                      className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/80 outline-none"
-                      value={title}
-                      onChange={(event) => setTitle(event.target.value)}
-                      placeholder="Countertop checkout"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs uppercase tracking-[0.24em] text-white/40">Public slug</label>
-                    <input
-                      className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/80 outline-none"
-                      value={slug}
-                      onChange={(event) => setSlug(slugify(event.target.value))}
-                      placeholder="countertop-checkout"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div>
-                    <label className="text-xs uppercase tracking-[0.24em] text-white/40">Amount step</label>
-                    <input
-                      className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/80 outline-none"
-                      value={amountStep}
-                      onChange={(event) => setAmountStep(sanitizeDecimalInput(event.target.value))}
-                      placeholder="Plus/minus increment"
-                      inputMode="decimal"
-                    />
+                    <label className="text-xs uppercase tracking-[0.24em] text-white/40">Pricing</label>
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      {([
+                        { id: "fixed", label: "Fixed" },
+                        { id: "suggested", label: "Suggested" },
+                      ] as const).map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => setMultiPayPricingMode(item.id)}
+                          className={`rounded-full px-3 py-3 text-xs transition ${
+                            multiPayPricingMode === item.id
+                              ? "border border-white/20 bg-white text-black"
+                              : "border border-white/10 bg-white/5 text-white/70"
+                          }`}
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                   <div>
                     <label className="text-xs uppercase tracking-[0.24em] text-white/40">Description</label>
@@ -670,14 +676,39 @@ export default function CreateInvoicePage() {
                       className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/80 outline-none"
                       value={description}
                       onChange={(event) => setDescription(event.target.value)}
-                      placeholder="Short note shown on hosted checkout"
+                      placeholder="What customers are paying for"
                     />
                   </div>
                 </div>
 
+                {multiPayPricingMode === "suggested" ? (
+                  <div>
+                    <label className="text-xs uppercase tracking-[0.24em] text-white/40">Suggested amounts</label>
+                    <div className="mt-2 grid gap-3 md:grid-cols-3">
+                      {suggestedAmounts.map((entry, index) => (
+                        <div
+                          key={`suggested-${index}`}
+                          className="flex items-center rounded-2xl border border-white/10 bg-white/5 px-4 py-3"
+                        >
+                          <input
+                            className="w-full bg-transparent text-sm text-white/80 outline-none"
+                            value={entry}
+                            onChange={(event) => updateSuggestedAmount(index, event.target.value)}
+                            placeholder={`Option ${index + 1}`}
+                            inputMode="decimal"
+                          />
+                          <span className="text-xs text-white/55">{currency}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-2 text-xs text-white/45">
+                      Customers will choose one of these amounts. Leave unused options empty.
+                    </div>
+                  </div>
+                ) : null}
+
                 <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70">
-                  MultiPay links stay active after each payment. Every customer session creates its own invoice,
-                  so you can reuse the same route for ongoing payments.
+                  MultiPay stays active after each payment. It uses the same currency and description every time, with either one fixed amount or a small set of suggested choices.
                 </div>
               </>
             )}
@@ -697,7 +728,7 @@ export default function CreateInvoicePage() {
               </div>
             </div>
 
-            {flow === "standard" && !merchantReady ? (
+            {!merchantReady ? (
               <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70">
                 Set up your profile in{" "}
                 <Link href="/profile" className="text-white underline underline-offset-4">
@@ -710,10 +741,10 @@ export default function CreateInvoicePage() {
             <div className="flex flex-wrap gap-3">
               <button
                 onClick={() => void submit()}
-                disabled={submitting || (flow === "standard" && !merchantReady)}
+                disabled={submitting || !merchantReady}
                 className="button-glow rounded-full border border-white/50 bg-white px-6 py-3 text-sm font-semibold text-black transition hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {submitting ? (flow === "standard" ? "Generating..." : "Creating...") : flow === "standard" ? "Generate invoice" : "Create MultiPay route"}
+                {submitting ? "Generating..." : flow === "standard" ? "Generate invoice" : "Create payment link"}
               </button>
             </div>
 
@@ -733,12 +764,14 @@ export default function CreateInvoicePage() {
             <div className="text-[11px] uppercase tracking-[0.26em] text-white/40">Hosted preview</div>
             <div className="mt-3 rounded-[28px] border border-white/10 bg-white/5 p-5">
               <div className="text-lg font-semibold text-white">
-                {flow === "standard" ? customer || "New invoice" : title || "MultiPay route"}
+                {flow === "standard" ? customer || "New invoice" : description || "Payment link"}
               </div>
               <div className="mt-1 text-sm text-white/55">
                 {flow === "standard"
                   ? `Single payment · ${formatCurrencyAmount(Number(amount || 0), currency)}`
-                  : `Reusable route · starts at ${formatCurrencyAmount(Number(amount || 0), currency)}`}
+                  : multiPayPricingMode === "suggested"
+                    ? `Reusable payment link · ${suggestedAmounts.filter(Boolean).length || 0} suggested choices`
+                    : `Reusable payment link · ${formatCurrencyAmount(Number(amount || 0), currency)}`}
               </div>
               <div className="mt-5">
                 <QrPreview
@@ -766,7 +799,13 @@ export default function CreateInvoicePage() {
                     : "border-white/10 bg-white/5 text-white/45"
                   }`}
               >
-                {result?.href ? "Open generated invoice" : "Generated invoice appears here"}
+                {result?.href
+                  ? flow === "standard"
+                    ? "Open generated invoice"
+                    : "Open payment link"
+                  : flow === "standard"
+                    ? "Generated invoice appears here"
+                    : "Generated payment link appears here"}
               </Link>
             </div>
           </GlassCard>
