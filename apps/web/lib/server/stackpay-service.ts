@@ -114,6 +114,18 @@ type ConfirmInvoicePaymentInput = {
   confirmedAt?: number | null;
 };
 
+type ChainhookInvoicePaidInput = {
+  phase: "apply" | "rollback";
+  txId: string;
+  invoiceId: string;
+  receiptId: string;
+  payerWalletAddress?: string | null;
+  merchantPrincipal?: string | null;
+  amount?: number | null;
+  currency?: Currency | null;
+  payload: Record<string, unknown>;
+};
+
 type DashboardActivityItem = {
   id: string;
   title: string;
@@ -934,6 +946,13 @@ function shortPublicId(value: string) {
   return value.length > 14 ? `${value.slice(0, 10)}...` : value;
 }
 
+function formatCurrencyAmount(amount: number, currency: Currency) {
+  return `${new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: currency === "sBTC" ? 8 : 2,
+  }).format(amount)} ${currency}`;
+}
+
 function buildActivityItem(
   event: Row,
   context: {
@@ -1136,5 +1155,112 @@ export async function getDashboardData(walletAddress: string) {
         paymentLinksById,
       })
     ),
+  };
+}
+
+export async function listNotificationsForWallet(walletAddress: string) {
+  const merchant = await getMerchantProfileByWallet(walletAddress);
+  if (!merchant) {
+    return [];
+  }
+
+  return (await selectRows("notifications", {
+    select: "*",
+    merchant_id: `eq.${merchant.id as string}`,
+    order: "created_at.desc",
+    limit: 20,
+  })) as Row[];
+}
+
+export async function markNotificationsReadForWallet(walletAddress: string) {
+  const merchant = await getMerchantProfileByWallet(walletAddress);
+  if (!merchant) {
+    return [];
+  }
+
+  return (await patchRows(
+    "notifications",
+    {
+      merchant_id: String(merchant.id),
+      read_at: "is.null",
+    },
+    {
+      read_at: new Date().toISOString(),
+    }
+  )) as Row[];
+}
+
+export async function processChainhookInvoicePaidEvent(input: ChainhookInvoicePaidInput) {
+  const deliveryKey = `${input.phase}:${input.receiptId}:${input.txId}`;
+
+  await upsertRow(
+    "chainhook_events",
+    {
+      delivery_key: deliveryKey,
+      event_type: "invoice-paid",
+      phase: input.phase,
+      tx_id: input.txId,
+      receipt_id: input.receiptId,
+      invoice_id: input.invoiceId,
+      merchant_principal: input.merchantPrincipal ?? null,
+      payload: input.payload,
+      processed_at: new Date().toISOString(),
+    },
+    "delivery_key"
+  );
+
+  if (input.phase === "rollback") {
+    return {
+      status: "rollback_recorded" as const,
+    };
+  }
+
+  const invoice = await getInvoiceByIdOrOnchainId(input.invoiceId);
+  if (!invoice) {
+    return {
+      status: "missing_invoice" as const,
+    };
+  }
+
+  const updatedInvoice = await confirmInvoicePayment({
+    invoiceId: input.invoiceId,
+    txId: input.txId,
+    receiptId: input.receiptId,
+    payerWalletAddress: input.payerWalletAddress ?? null,
+  });
+
+  const merchant = await selectSingle<Row>("merchant_profiles", {
+    id: `eq.${String(updatedInvoice.merchant_id)}`,
+  });
+
+  await upsertRow(
+    "notifications",
+    {
+      merchant_id: updatedInvoice.merchant_id,
+      source_key: `invoice-paid:${input.receiptId}`,
+      kind: "invoice.paid",
+      title: "Invoice paid",
+      body: `${formatCurrencyAmount(
+        toNumericValue(updatedInvoice.amount),
+        String(updatedInvoice.currency) as Currency
+      )} received for invoice ${shortPublicId(input.invoiceId)}.`,
+      href: `/pay/${input.invoiceId}`,
+      level: "success",
+      metadata: {
+        invoiceId: input.invoiceId,
+        receiptId: input.receiptId,
+        txId: input.txId,
+        payerWalletAddress: input.payerWalletAddress ?? null,
+        merchantPrincipal: input.merchantPrincipal ?? merchant?.wallet_address ?? null,
+        amount: input.amount ?? toNumericValue(updatedInvoice.amount),
+        currency: input.currency ?? String(updatedInvoice.currency),
+      },
+    },
+    "source_key"
+  );
+
+  return {
+    status: "processed" as const,
+    invoice: updatedInvoice,
   };
 }

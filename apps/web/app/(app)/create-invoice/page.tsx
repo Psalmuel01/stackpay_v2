@@ -699,11 +699,11 @@ export default function CreateInvoicePage() {
 
             {flow === "standard" && !merchantReady ? (
               <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70">
-                Add your business name, display name, and email address in{" "}
+                Set up your profile in{" "}
                 <Link href="/profile" className="text-white underline underline-offset-4">
                   Profile
                 </Link>{" "}
-                before creating invoices. Business names must be longer than 6 characters, and your saved merchant details are what customers will see on the hosted payment page.
+                first before creating invoices.
               </div>
             ) : null}
 

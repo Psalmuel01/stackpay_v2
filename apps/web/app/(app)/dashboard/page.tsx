@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { use, useEffect, useMemo, useState } from "react";
 import GlassCard from "@/components/GlassCard";
 import DonutBreakdown from "@/components/app/DonutBreakdown";
 import PageHeader from "@/components/app/PageHeader";
@@ -116,8 +116,13 @@ export default function DashboardPage() {
   }, [connectedAddress]);
 
   const merchantName = useMemo(() => {
-    return dashboard?.merchant?.company_name || dashboard?.merchant?.display_name || "Merchant";
+    return dashboard?.merchant?.company_name || "Merchant";
   }, [dashboard]);
+
+  const displayName = useMemo(() => {
+    return dashboard?.merchant?.display_name || "Merchant";
+  }, [dashboard]);
+
 
   const balanceCards = [
     {
@@ -153,7 +158,7 @@ export default function DashboardPage() {
   return (
     <div>
       <PageHeader
-        title="Merchant Dashboard"
+        title={`${displayName}'s Dashboard`}
         subtitle="Track invoice volume, payment-link coverage, and recent payment activity from your live StackPay data."
       />
 

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import Logo from "@/components/Logo";
 import ConnectWalletButton from "@/components/app/ConnectWalletButton";
+import NotificationsButton from "@/components/app/NotificationsButton";
 import { appNavigation, settingsNavigation } from "@stackpay/ui";
 
 export default function AppHeader() {
@@ -95,7 +96,10 @@ export default function AppHeader() {
           </div>
         </nav>
 
-        <ConnectWalletButton />
+        <div className="flex items-center gap-3">
+          <NotificationsButton />
+          <ConnectWalletButton />
+        </div>
       </div>
     </header>
   );

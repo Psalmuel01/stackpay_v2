@@ -1,0 +1,22 @@
+{
+  "name": "stackpay-invoice-paid",
+  "network": "testnet",
+  "version": 1,
+  "enabled": false,
+  "predicate": {
+    "type": "contract_log",
+    "contract_identifier": "ST13J1C3K69H3EDG2SVJ21SQ6GXD6A6F862QCK16D.architecture"
+  },
+  "action": {
+    "type": "http_post",
+    "url": "https://your-stackpay-app.com/api/webhooks/chainhooks",
+    "headers": {
+      "x-stackpay-chainhook-secret": "replace-me"
+    }
+  },
+  "options": {
+    "decode_clarity_values": true,
+    "include_block_metadata": true,
+    "enable_on_registration": true
+  }
+}

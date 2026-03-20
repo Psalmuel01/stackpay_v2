@@ -225,13 +225,13 @@ export default function QrLinkPage() {
             <div className="text-[11px] uppercase tracking-[0.26em] text-white/40">Merchant setup required</div>
             <div className="mt-3 text-xl font-semibold">Complete profile setup before generating your QR</div>
             <div className="mt-3 text-sm text-white/60">
-              Add your business name, display name, and email address in Settings first. The business name must be longer than 6 characters, and those saved merchant details are what customers will see when they scan your QR code.
+              Add your business name, display name, and email address in Profile first.
             </div>
             <Link
               href="/profile"
               className="mt-5 inline-flex rounded-full border border-white/20 bg-white px-6 py-3 text-sm font-semibold text-black"
             >
-              Open Settings
+              Open Profile
             </Link>
           </div>
         </GlassCard>

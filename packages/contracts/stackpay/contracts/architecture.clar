@@ -453,8 +453,10 @@
           event: "invoice-paid",
           invoice-id: invoice-id,
           receipt-id: receipt-id,
+          merchant: (get merchant invoice),
           payer: payer,
           amount: amount,
+          currency: (get currency invoice),
         })
         (ok receipt-id)
       )
