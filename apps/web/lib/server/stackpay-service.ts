@@ -114,6 +114,21 @@ type ConfirmInvoicePaymentInput = {
   confirmedAt?: number | null;
 };
 
+type DashboardActivityItem = {
+  id: string;
+  title: string;
+  detail: string;
+  status: "Paid" | "Pending" | "Expired" | "Active" | "Profile";
+  createdAt: string;
+  href?: string;
+};
+
+const usdRates = {
+  sBTC: 68000,
+  STX: 2.4,
+  USDCx: 1,
+} as const;
+
 async function selectSingle<T extends Row>(table: string, query: Record<string, string>) {
   const rows = (await selectRows(table, {
     select: "*",
@@ -122,6 +137,11 @@ async function selectSingle<T extends Row>(table: string, query: Record<string, 
   })) as T[] | null;
 
   return rows?.[0] ?? null;
+}
+
+function toNumericValue(value: unknown) {
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) ? numberValue : 0;
 }
 
 function ensureWalletAddress(walletAddress: string) {
@@ -843,4 +863,213 @@ export async function confirmInvoicePayment(input: ConfirmInvoicePaymentInput) {
   );
 
   return updatedInvoice;
+}
+
+function shortPublicId(value: string) {
+  return value.length > 14 ? `${value.slice(0, 10)}...` : value;
+}
+
+function buildActivityItem(
+  event: Row,
+  context: {
+    invoicesByOnchainId: Map<string, Row>;
+    paymentLinksById: Map<string, Row>;
+  }
+): DashboardActivityItem {
+  const payload = (event.payload ?? {}) as Record<string, unknown>;
+  const invoiceId = String(payload.onchainInvoiceId ?? event.entity_id ?? "");
+  const paymentLink = context.paymentLinksById.get(String(event.entity_id));
+  const invoice = context.invoicesByOnchainId.get(invoiceId);
+
+  switch (String(event.event_type)) {
+    case "invoice.paid":
+      return {
+        id: String(event.id),
+        title: `Invoice ${shortPublicId(invoiceId)} paid`,
+        detail:
+          invoice && invoice.amount && invoice.currency
+            ? `${toNumericValue(invoice.amount)} ${String(invoice.currency)} confirmed on-chain.`
+            : "Payment confirmed on-chain.",
+        status: "Paid",
+        createdAt: String(event.created_at),
+        href: invoiceId ? `/pay/${invoiceId}` : "/invoices",
+      };
+    case "invoice.created":
+    case "invoice.created.public-link":
+      return {
+        id: String(event.id),
+        title: `Invoice ${shortPublicId(invoiceId)} created`,
+        detail:
+          payload.amount && payload.currency
+            ? `${String(payload.amount)} ${String(payload.currency)} awaiting payment.`
+            : "Invoice is live and ready to be paid.",
+        status: "Pending",
+        createdAt: String(event.created_at),
+        href: invoiceId ? `/pay/${invoiceId}` : "/invoices",
+      };
+    case "payment_link.chain.submitted":
+    case "payment_link.qr.created":
+    case "payment_link.draft.created":
+      return {
+        id: String(event.id),
+        title: paymentLink?.is_universal
+          ? "Universal QR updated"
+          : `${paymentLink?.title || "Payment link"} live`,
+        detail: paymentLink?.slug
+          ? `/${paymentLink.slug}`
+          : "Public payment route is available for checkout.",
+        status: "Active",
+        createdAt: String(event.created_at),
+        href: paymentLink?.slug ? `/pay/link/${paymentLink.slug}` : paymentLink?.is_universal ? "/qr-link" : "/create-invoice",
+      };
+    default:
+      return {
+        id: String(event.id),
+        title: String(event.event_type).replace(/\./g, " "),
+        detail: "Recent merchant activity recorded in StackPay.",
+        status: "Profile",
+        createdAt: String(event.created_at),
+      };
+  }
+}
+
+function buildTrendPoints(invoices: Row[]) {
+  const byDay = new Map<string, number>();
+
+  for (let offset = 6; offset >= 0; offset -= 1) {
+    const date = new Date();
+    date.setHours(0, 0, 0, 0);
+    date.setDate(date.getDate() - offset);
+    const key = date.toISOString().slice(0, 10);
+    byDay.set(key, 0);
+  }
+
+  for (const invoice of invoices) {
+    if (invoice.status !== "paid") {
+      continue;
+    }
+
+    const paidAt = String(invoice.paid_at ?? invoice.created_at ?? "");
+    const key = paidAt.slice(0, 10);
+    if (!byDay.has(key)) {
+      continue;
+    }
+
+    byDay.set(
+      key,
+      (byDay.get(key) ?? 0) +
+        toNumericValue(invoice.amount) * usdRates[String(invoice.currency) as Currency]
+    );
+  }
+
+  return Array.from(byDay.entries()).map(([key, value]) => ({
+    label: new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(new Date(`${key}T00:00:00Z`)),
+    value: Math.round(value),
+  }));
+}
+
+export async function getDashboardData(walletAddress: string) {
+  const merchant = await getMerchantProfileByWallet(walletAddress);
+  if (!merchant) {
+    return {
+      merchant: null,
+      processorBalances: {
+        STX: 0,
+        sBTC: 0,
+        USDCx: 0,
+      },
+      stats: {
+        totalVolumeUsd: 0,
+        paidInvoices: 0,
+        openInvoices: 0,
+        activePaymentLinks: 0,
+        multipayLinks: 0,
+        universalQrActive: false,
+      },
+      trendPoints: [] as Array<{ label: string; value: number }>,
+      statusBreakdown: { paid: 0, pending: 0, expired: 0 },
+      activity: [] as DashboardActivityItem[],
+    };
+  }
+
+  await syncExpiredInvoices({
+    merchant_id: `eq.${merchant.id as string}`,
+  });
+
+  const [invoices, paymentLinks, activityEvents] = await Promise.all([
+    selectRows("invoices", {
+      select: "*",
+      merchant_id: `eq.${merchant.id as string}`,
+      order: "created_at.desc",
+    }) as Promise<Row[]>,
+    selectRows("payment_links", {
+      select: "*",
+      merchant_id: `eq.${merchant.id as string}`,
+      order: "created_at.desc",
+    }) as Promise<Row[]>,
+    selectRows("activity_events", {
+      select: "*",
+      merchant_id: `eq.${merchant.id as string}`,
+      order: "created_at.desc",
+      limit: 6,
+    }) as Promise<Row[]>,
+  ]);
+
+  const paidInvoices = invoices.filter((invoice) => invoice.status === "paid");
+  const pendingInvoices = invoices.filter((invoice) => invoice.status === "pending");
+  const expiredInvoices = invoices.filter((invoice) => invoice.status === "expired");
+  const activePaymentLinks = paymentLinks.filter((link) => link.is_active);
+  const multipayLinks = activePaymentLinks.filter((link) => link.kind === "multipay" && !link.is_universal);
+  const universalQr = activePaymentLinks.find((link) => link.is_universal);
+  const invoicesByOnchainId = new Map(
+    invoices.map((invoice) => [String(invoice.onchain_invoice_id), invoice] as const)
+  );
+  const paymentLinksById = new Map(
+    paymentLinks.map((paymentLink) => [String(paymentLink.id), paymentLink] as const)
+  );
+  const processorBalances = paidInvoices.reduce(
+    (sum, invoice) => {
+      const currency = String(invoice.currency) as Currency;
+      sum[currency] += toNumericValue(invoice.amount);
+      return sum;
+    },
+    {
+      STX: 0,
+      sBTC: 0,
+      USDCx: 0,
+    }
+  );
+
+  return {
+    merchant: {
+      company_name: merchant.company_name ?? "",
+      display_name: merchant.display_name ?? "",
+      email: merchant.email ?? "",
+      slug: merchant.slug ?? "",
+      settlement_wallet: merchant.settlement_wallet ?? walletAddress,
+    },
+    processorBalances,
+    stats: {
+      totalVolumeUsd: paidInvoices.reduce((sum, invoice) => {
+        return sum + toNumericValue(invoice.amount) * usdRates[String(invoice.currency) as Currency];
+      }, 0),
+      paidInvoices: paidInvoices.length,
+      openInvoices: pendingInvoices.length,
+      activePaymentLinks: activePaymentLinks.length,
+      multipayLinks: multipayLinks.length,
+      universalQrActive: Boolean(universalQr),
+    },
+    trendPoints: buildTrendPoints(invoices),
+    statusBreakdown: {
+      paid: paidInvoices.length,
+      pending: pendingInvoices.length,
+      expired: expiredInvoices.length,
+    },
+    activity: activityEvents.map((event) =>
+      buildActivityItem(event, {
+        invoicesByOnchainId,
+        paymentLinksById,
+      })
+    ),
+  };
 }
