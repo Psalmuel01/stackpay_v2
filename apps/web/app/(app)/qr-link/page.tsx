@@ -336,11 +336,19 @@ export default function QrLinkPage() {
             <GlassCard>
               <div className="text-[11px] uppercase tracking-[0.26em] text-white/40">Actions</div>
               <div className="mt-4 flex flex-wrap gap-3">
-                <Link
+                {/* <Link
                   href={hostedHref}
+                  target="_blank"
+                  rel="noreferrer"
                   className="rounded-full border border-white/10 bg-white/5 px-5 py-3 text-xs text-white/70"
                 >
                   Open hosted page
+                </Link> */}
+                <Link
+                  href="/payment-links"
+                  className="rounded-full border border-white/10 bg-white/5 px-5 py-3 text-xs text-white/70"
+                >
+                  View payment links
                 </Link>
                 <button
                   onClick={() => void handleGenerate(true)}

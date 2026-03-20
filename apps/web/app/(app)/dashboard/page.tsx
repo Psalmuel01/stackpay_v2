@@ -297,6 +297,8 @@ export default function DashboardPage() {
                     <Link
                       key={item.id}
                       href={item.href ?? "/invoices"}
+                      target="_blank"
+                      rel="noreferrer"
                       className="block rounded-2xl border border-white/10 bg-white/5 px-4 py-4 transition hover:border-white/20 hover:bg-white/[0.08]"
                     >
                       <div className="flex items-start justify-between gap-4">
@@ -369,11 +371,17 @@ export default function DashboardPage() {
                 >
                   Create invoice
                 </Link>
-                <Link
+                {/* <Link
                   href="/qr-link"
                   className="rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm text-white/70"
                 >
                   Open QR link
+                </Link> */}
+                <Link
+                  href="/payment-links"
+                  className="rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm text-white/70"
+                >
+                  View payment links
                 </Link>
               </div>
             </GlassCard>

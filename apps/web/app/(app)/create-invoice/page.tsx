@@ -794,6 +794,8 @@ export default function CreateInvoicePage() {
               </button>
               <Link
                 href={result?.href ?? "#"}
+                target={result?.href ? "_blank" : undefined}
+                rel={result?.href ? "noreferrer" : undefined}
                 className={`flex w-full items-center justify-center rounded-full border px-4 py-3 text-xs ${result?.href
                     ? "border-white/35 bg-white text-black"
                     : "border-white/10 bg-white/5 text-white/45"

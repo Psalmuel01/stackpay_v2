@@ -31,19 +31,34 @@ export default function NotificationsButton() {
 
     try {
       const audioContext = new window.AudioContext();
-      const oscillator = audioContext.createOscillator();
-      const gainNode = audioContext.createGain();
+      void audioContext.resume().catch(() => {});
 
-      oscillator.connect(gainNode);
-      gainNode.connect(audioContext.destination);
-      oscillator.type = "sine";
-      oscillator.frequency.value = 880;
-      gainNode.gain.setValueAtTime(0.0001, audioContext.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.05, audioContext.currentTime + 0.01);
-      gainNode.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 0.18);
-      oscillator.start();
-      oscillator.stop(audioContext.currentTime + 0.2);
-      void audioContext.close().catch(() => {});
+      const scheduleNote = (frequency: number, startOffset: number, duration: number, volume: number) => {
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        oscillator.type = "triangle";
+        oscillator.frequency.value = frequency;
+        gainNode.gain.setValueAtTime(0.0001, audioContext.currentTime + startOffset);
+        gainNode.gain.exponentialRampToValueAtTime(volume, audioContext.currentTime + startOffset + 0.01);
+        gainNode.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + startOffset + duration);
+        oscillator.start(audioContext.currentTime + startOffset);
+        oscillator.stop(audioContext.currentTime + startOffset + duration + 0.02);
+      };
+
+      scheduleNote(740, 0, 0.14, 0.12);
+      scheduleNote(988, 0.12, 0.16, 0.14);
+      scheduleNote(1175, 0.28, 0.22, 0.12);
+
+      window.setTimeout(() => {
+        void audioContext.close().catch(() => {});
+      }, 700);
+
+      if ("vibrate" in navigator) {
+        navigator.vibrate?.([40, 20, 40]);
+      }
     } catch {
       // ignore autoplay/audio context issues
     }
@@ -179,7 +194,7 @@ export default function NotificationsButton() {
               notifications.map((item) => {
                 const content = (
                   <div
-                    className={`rounded-2xl px-3 py-3 text-sm transition ${item.read_at
+                    className={`rounded-2xl px-3 py-2 text-sm transition mb-2 ${item.read_at
                         ? "bg-white/5 text-white/70"
                         : "bg-white/10 text-white"
                       }`}
@@ -198,7 +213,7 @@ export default function NotificationsButton() {
                 );
 
                 return item.href ? (
-                  <Link key={item.id} href={item.href} onClick={() => setOpen(false)}>
+                  <Link key={item.id} href={item.href} target="_blank" rel="noreferrer" onClick={() => setOpen(false)}>
                     {content}
                   </Link>
                 ) : (
@@ -222,6 +237,8 @@ export default function NotificationsButton() {
           {toastNotification.href ? (
             <Link
               href={toastNotification.href}
+              target="_blank"
+              rel="noreferrer"
               onClick={() => {
                 setToastNotification(null);
                 setOpen(false);

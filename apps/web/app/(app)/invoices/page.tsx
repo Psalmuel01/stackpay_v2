@@ -226,6 +226,8 @@ export default function InvoicesPage() {
                     <div>
                       <Link
                         href={`/pay/${invoice.onchain_invoice_id}`}
+                        target="_blank"
+                        rel="noreferrer"
                         className="inline-flex rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/75"
                       >
                         View
@@ -275,6 +277,8 @@ export default function InvoicesPage() {
                     </div>
                     <Link
                       href={`/pay/${invoice.onchain_invoice_id}`}
+                      target="_blank"
+                      rel="noreferrer"
                       className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/75"
                     >
                       View

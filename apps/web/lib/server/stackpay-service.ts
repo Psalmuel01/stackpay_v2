@@ -771,7 +771,7 @@ export async function createUniversalQrDraft(input: CreateUniversalQrInput) {
   );
   const title = input.title || `${merchantName} QR`;
   const description =
-    input.description || "Multi-purpose payments across supported assets.";
+    input.description || "Multi-purpose payments";
   const recipientAddress =
     input.recipientAddress?.trim() ||
     String(ensuredMerchant.settlement_wallet || walletAddress);
@@ -1064,6 +1064,39 @@ function buildActivityItem(
   }
 }
 
+function activitySemanticKey(event: Row) {
+  const payload = (event.payload ?? {}) as Record<string, unknown>;
+  const eventType = String(event.event_type ?? "");
+
+  if (eventType.startsWith("invoice.")) {
+    const invoiceId = String(payload.onchainInvoiceId ?? event.entity_id ?? "");
+    return invoiceId ? `invoice:${invoiceId}` : `event:${String(event.id)}`;
+  }
+
+  if (eventType.startsWith("payment_link.")) {
+    return `payment-link:${String(event.entity_id ?? event.id)}`;
+  }
+
+  return `event:${String(event.id)}`;
+}
+
+function dedupeActivityEvents(events: Row[]) {
+  const seen = new Set<string>();
+  const deduped: Row[] = [];
+
+  for (const event of events) {
+    const key = activitySemanticKey(event);
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    deduped.push(event);
+  }
+
+  return deduped;
+}
+
 function buildTrendPoints(invoices: Row[]) {
   const byDay = new Map<string, number>();
 
@@ -1142,7 +1175,7 @@ export async function getDashboardData(walletAddress: string) {
       select: "*",
       merchant_id: `eq.${merchant.id as string}`,
       order: "created_at.desc",
-      limit: 6,
+      limit: 20,
     }) as Promise<Row[]>,
   ]);
 
@@ -1196,7 +1229,7 @@ export async function getDashboardData(walletAddress: string) {
       pending: pendingInvoices.length,
       expired: expiredInvoices.length,
     },
-    activity: activityEvents.map((event) =>
+    activity: dedupeActivityEvents(activityEvents).map((event) =>
       buildActivityItem(event, {
         invoicesByOnchainId,
         paymentLinksById,
