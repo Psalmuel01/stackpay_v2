@@ -11,3 +11,12 @@ export function slugify(value: string) {
 export function makeEntityKey(prefix: string) {
   return `${prefix}_${Date.now()}_${randomUUID().slice(0, 8)}`;
 }
+
+export function makeSlugWithSuffix(value: string) {
+  const base = slugify(value);
+  if (!base) {
+    return "";
+  }
+
+  return `${base}-${randomUUID().replace(/-/g, "").slice(0, 6).toLowerCase()}`;
+}

@@ -5,7 +5,7 @@ import {
   buildCreateUniversalQrIntent,
   type ContractIntent,
 } from "@/lib/server/stackpay-contracts";
-import { makeEntityKey, slugify } from "@/lib/server/ids";
+import { makeEntityKey, makeSlugWithSuffix, slugify } from "@/lib/server/ids";
 import {
   insertRow,
   patchRows,
@@ -174,14 +174,44 @@ function merchantDisplayName(merchant: Row | null) {
   return companyName || displayName;
 }
 
+function assertValidBusinessName(value: string) {
+  if (value.trim().length <= 6) {
+    throw new Error("Business name must be longer than 6 characters.");
+  }
+
+  if (!slugify(value)) {
+    throw new Error("Business name must contain letters or numbers.");
+  }
+}
+
+function assertValidDisplayName(value: string) {
+  if (!value.trim()) {
+    throw new Error("Display name is required.");
+  }
+}
+
+function isValidEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function assertValidMerchantEmail(value: string) {
+  if (!value.trim()) {
+    throw new Error("Email address is required.");
+  }
+
+  if (!isValidEmail(value.trim())) {
+    throw new Error("Enter a valid email address.");
+  }
+}
+
 function assertMerchantSetupReady(merchant: Row | null) {
   if (!merchant) {
     throw new Error("Complete your merchant settings before creating an invoice.");
   }
 
-  if (!merchantDisplayName(merchant)) {
-    throw new Error("Add a business name or display name in Profile before creating an invoice.");
-  }
+  assertValidBusinessName(String(merchant.company_name ?? ""));
+  assertValidDisplayName(String(merchant.display_name ?? ""));
+  assertValidMerchantEmail(String(merchant.email ?? ""));
 }
 
 async function syncExpiredInvoices(filters: Record<string, string>) {
@@ -213,32 +243,36 @@ export async function getMerchantProfileByWallet(walletAddress: string) {
 export async function upsertMerchantProfile(input: MerchantProfileInput) {
   const walletAddress = ensureWalletAddress(input.walletAddress);
   const existingMerchant = await getMerchantProfileByWallet(walletAddress);
-  const fallbackSlugBase = slugify(
-    input.companyName ||
-      input.displayName ||
-      String(existingMerchant?.company_name || existingMerchant?.display_name || "merchant")
-  );
-  const fallbackSlug = `${fallbackSlugBase}-${walletAddress.slice(-6).toLowerCase()}`;
+  const nextCompanyName =
+    input.companyName !== undefined
+      ? input.companyName.trim()
+      : String(existingMerchant?.company_name ?? "").trim();
+  const nextDisplayName =
+    input.displayName !== undefined
+      ? input.displayName.trim()
+      : String(existingMerchant?.display_name ?? "");
+  const nextEmail =
+    input.email !== undefined
+      ? input.email.trim()
+      : String(existingMerchant?.email ?? "");
+  assertValidBusinessName(nextCompanyName);
+  assertValidDisplayName(nextDisplayName);
+  assertValidMerchantEmail(nextEmail);
+  const nextSlug =
+    existingMerchant &&
+    String(existingMerchant.company_name ?? "").trim() === nextCompanyName &&
+    String(existingMerchant.slug ?? "").trim()
+      ? String(existingMerchant.slug)
+      : makeSlugWithSuffix(nextCompanyName);
+
   const merchant = await upsertRow(
     "merchant_profiles",
     {
       wallet_address: walletAddress,
-      display_name:
-        input.displayName !== undefined
-          ? input.displayName
-          : String(existingMerchant?.display_name ?? ""),
-      company_name:
-        input.companyName !== undefined
-          ? input.companyName
-          : String(existingMerchant?.company_name ?? ""),
-      email:
-        input.email !== undefined
-          ? input.email
-          : String(existingMerchant?.email ?? ""),
-      slug:
-        input.slug !== undefined
-          ? (input.slug.trim() ? slugify(input.slug) : String(existingMerchant?.slug ?? fallbackSlug))
-          : String(existingMerchant?.slug ?? fallbackSlug),
+      display_name: nextDisplayName,
+      company_name: nextCompanyName,
+      email: nextEmail,
+      slug: nextSlug,
       settlement_wallet:
         input.settlementWallet !== undefined
           ? input.settlementWallet
@@ -449,7 +483,8 @@ export async function createPaymentLinkDraft(input: CreatePaymentLinkInput) {
   const merchant = await getMerchantProfileByWallet(input.walletAddress);
   assertMerchantSetupReady(merchant);
   const ensuredMerchant = merchant as Row;
-  const slug = slugify(input.slug || `${ensuredMerchant.slug || ensuredMerchant.company_name || "stackpay"}-${input.kind}`);
+  const merchantBaseSlug = slugify(String(ensuredMerchant.slug ?? ensuredMerchant.company_name ?? ""));
+  const slug = slugify(input.slug || `${merchantBaseSlug}-${input.kind}`);
   const acceptedCurrencies = buildAcceptedCurrencies(input.defaultCurrency, input.acceptedCurrencies);
   const recipientAddress =
     input.recipientAddress?.trim() ||
@@ -605,7 +640,7 @@ export async function createUniversalQrDraft(input: CreateUniversalQrInput) {
   }
 
   const merchantName = merchantDisplayName(ensuredMerchant);
-  const merchantSlug = String(ensuredMerchant.slug ?? merchantName);
+  const merchantSlug = slugify(String(ensuredMerchant.slug ?? merchantName));
   const slug = slugify(
     input.slug ||
       (input.rotate

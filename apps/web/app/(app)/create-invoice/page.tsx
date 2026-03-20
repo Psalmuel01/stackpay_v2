@@ -19,6 +19,7 @@ type MerchantProfile = {
   settlement_wallet?: string | null;
   display_name?: string;
   company_name?: string;
+  email?: string;
   slug?: string | null;
 };
 
@@ -105,7 +106,12 @@ export default function CreateInvoicePage() {
   const [connectedAddress, setConnectedAddress] = useState<string | null>(null);
   const resolvedRecipientAddress = merchantProfile?.settlement_wallet || connectedAddress || "";
   const merchantName = (merchantProfile?.company_name || merchantProfile?.display_name || "").trim();
-  const merchantReady = Boolean(connectedAddress && merchantName);
+  const merchantReady = Boolean(
+    connectedAddress &&
+      (merchantProfile?.company_name ?? "").trim().length > 6 &&
+      (merchantProfile?.display_name ?? "").trim() &&
+      isValidEmail((merchantProfile?.email ?? "").trim())
+  );
 
   useEffect(() => {
     setConnectedAddress(getConnectedWalletAddress());
@@ -149,7 +155,10 @@ export default function CreateInvoicePage() {
       return result.href.replace(/^\//, "stackpay.app/");
     }
     if (flow === "multipay") {
-      return `stackpay.app/pay/link/${slugify(slug || "multipay")}`;
+      const previewSlug = slugify(slug || `${merchantProfile?.slug || ""}-multipay`);
+      return previewSlug
+        ? `stackpay.app/pay/link/${previewSlug}`
+        : "Generated payment link appears after confirmation";
     }
     if (result?.txId && !result?.href) {
       return "Waiting for confirmed invoice link";
@@ -298,7 +307,7 @@ export default function CreateInvoicePage() {
       }
 
       if (!merchantReady) {
-        setError("Complete Settings first so StackPay has a real merchant name to show on the hosted invoice page.");
+        setError("Complete Settings first with a valid business name, display name, and email address before creating invoices.");
         return;
       }
 
@@ -392,7 +401,7 @@ export default function CreateInvoicePage() {
     }
 
     if (!merchantReady) {
-      setError("Complete Settings first so the payment link has a real merchant identity.");
+      setError("Complete Settings first with a valid business name, display name, and email address.");
       return;
     }
 
@@ -413,7 +422,7 @@ export default function CreateInvoicePage() {
           walletAddress: connectedAddress,
           kind: "multipay",
           recipientAddress: resolvedRecipientAddress,
-          slug: slugify(slug || `${merchantProfile?.slug || "stackpay"}-multipay`),
+          slug: slugify(slug || `${merchantProfile?.slug || ""}-multipay`),
           title: title || "MultiPay route",
           description,
           defaultCurrency: currency,
@@ -690,11 +699,11 @@ export default function CreateInvoicePage() {
 
             {flow === "standard" && !merchantReady ? (
               <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70">
-                Add a business name or display name in{" "}
+                Add your business name, display name, and email address in{" "}
                 <Link href="/profile" className="text-white underline underline-offset-4">
                   Profile
                 </Link>{" "}
-                before creating invoices. That merchant name is what customers will see on the hosted payment page.
+                before creating invoices. Business names must be longer than 6 characters, and your saved merchant details are what customers will see on the hosted payment page.
               </div>
             ) : null}
 
@@ -757,7 +766,7 @@ export default function CreateInvoicePage() {
                     : "border-white/10 bg-white/5 text-white/45"
                   }`}
               >
-                {result?.href ? "Open generated flow" : "Generated flow appears here"}
+                {result?.href ? "Open generated invoice" : "Generated invoice appears here"}
               </Link>
             </div>
           </GlassCard>

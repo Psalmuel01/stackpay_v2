@@ -11,9 +11,14 @@ import { getConnectedWalletAddress, submitContractIntent, type StackPayContractI
 type MerchantProfile = {
   company_name?: string;
   display_name?: string;
+  email?: string;
   slug?: string;
   settlement_wallet?: string | null;
 };
+
+function isValidEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
 
 type UniversalQrLink = {
   id: string;
@@ -93,7 +98,12 @@ export default function QrLinkPage() {
 
   const merchantName = (merchantProfile?.company_name || merchantProfile?.display_name || "").trim();
   const settlementWallet = merchantProfile?.settlement_wallet || connectedAddress || "";
-  const ready = Boolean(connectedAddress && merchantName);
+  const ready = Boolean(
+    connectedAddress &&
+      (merchantProfile?.company_name ?? "").trim().length > 6 &&
+      (merchantProfile?.display_name ?? "").trim() &&
+      isValidEmail((merchantProfile?.email ?? "").trim())
+  );
   const hostedHref = universalLink ? `/pay/link/${universalLink.slug}` : "";
 
   async function confirmPaymentLinkFromChain(paymentLinkId: string, txId: string) {
@@ -166,12 +176,14 @@ export default function QrLinkPage() {
 
       if (!contractIntent) {
         setUniversalLink(paymentLink);
+        setSubmitting(false);
         return;
       }
 
       await submitContractIntent(contractIntent, {
         onCancel: () => {
           setError("Contract call was canceled.");
+          setSubmitting(false);
         },
         onFinish: async ({ txId }) => {
           try {
@@ -179,12 +191,13 @@ export default function QrLinkPage() {
             setUniversalLink(chainLink ?? paymentLink);
           } catch (syncError) {
             setError(syncError instanceof Error ? syncError.message : "Failed to confirm QR link.");
+          } finally {
+            setSubmitting(false);
           }
         },
       });
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Failed to generate QR link.");
-    } finally {
       setSubmitting(false);
     }
   }
@@ -212,7 +225,7 @@ export default function QrLinkPage() {
             <div className="text-[11px] uppercase tracking-[0.26em] text-white/40">Merchant setup required</div>
             <div className="mt-3 text-xl font-semibold">Complete profile setup before generating your QR</div>
             <div className="mt-3 text-sm text-white/60">
-              Add your business name or display name in Settings first. That merchant identity is what customers will see when they scan your QR code.
+              Add your business name, display name, and email address in Settings first. The business name must be longer than 6 characters, and those saved merchant details are what customers will see when they scan your QR code.
             </div>
             <Link
               href="/profile"

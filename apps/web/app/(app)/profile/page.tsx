@@ -24,6 +24,23 @@ function isValidEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
+function slugify(value: string) {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function previewSlug(value: string, currentSlug?: string) {
+  if (currentSlug) {
+    return currentSlug;
+  }
+
+  const base = slugify(value);
+  return base ? `${base}-xxxxxx` : "";
+}
+
 export default function ProfilePage() {
   const [connectedAddress, setConnectedAddress] = useState<string | null>(null);
   const [profile, setProfile] = useState<MerchantProfile>({
@@ -107,7 +124,22 @@ export default function ProfilePage() {
       return;
     }
 
-    if ((profile.email ?? "").trim() && !isValidEmail((profile.email ?? "").trim())) {
+    if ((profile.company_name ?? "").trim().length <= 6) {
+      setError("Business name must be longer than 6 characters.");
+      return;
+    }
+
+    if (!(profile.display_name ?? "").trim()) {
+      setError("Display name is required.");
+      return;
+    }
+
+    if (!(profile.email ?? "").trim()) {
+      setError("Email address is required.");
+      return;
+    }
+
+    if (!isValidEmail((profile.email ?? "").trim())) {
       setError("Enter a valid email address.");
       return;
     }
@@ -126,7 +158,6 @@ export default function ProfilePage() {
           displayName: profile.display_name ?? "",
           companyName: profile.company_name ?? "",
           email: profile.email ?? "",
-          slug: profile.slug ?? "",
           settlementWallet,
           webhookUrl: profile.webhook_url || "",
           defaultCurrency: profile.default_currency ?? "sBTC",
@@ -163,6 +194,7 @@ export default function ProfilePage() {
 
   const resolvedSettlement = settlementDraft || profile.settlement_wallet || connectedAddress || "";
   const merchantName = (profile.company_name || profile.display_name || "").trim();
+  const derivedSlug = previewSlug(profile.company_name ?? "", profile.slug ?? "");
 
   return (
     <div>
@@ -187,6 +219,7 @@ export default function ProfilePage() {
                 value={profile.display_name ?? ""}
                 onChange={(event) => updateField("display_name", event.target.value)}
                 placeholder="Display name"
+                required
               />
             </div>
             <div className="grid gap-3 md:grid-cols-2">
@@ -197,13 +230,11 @@ export default function ProfilePage() {
                 onChange={(event) => updateField("email", event.target.value)}
                 placeholder="Email address"
                 autoComplete="email"
+                required
               />
-              <input
-                className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70"
-                value={profile.slug ?? ""}
-                onChange={(event) => updateField("slug", event.target.value)}
-                placeholder="Public slug"
-              />
+              <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70">
+                {derivedSlug || "merchant slug"}
+              </div>
             </div>
             <input
               className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70"
@@ -286,7 +317,7 @@ export default function ProfilePage() {
               <div className="rounded-[20px] border border-white/10 bg-white/5 px-4 py-3">
                 <div className="text-[11px] uppercase tracking-[0.22em] text-white/35">Merchant name</div>
                 <div className="mt-2 text-sm text-white/80">
-                  {merchantName || "Add a business or display name"}
+                  {merchantName || "Add a business name"}
                 </div>
               </div>
               <div className="rounded-[20px] border border-white/10 bg-white/5 px-4 py-3">
@@ -295,9 +326,9 @@ export default function ProfilePage() {
                   {resolvedSettlement ? truncateAddress(resolvedSettlement) : "Waiting for wallet connection"}
                 </div>
               </div>
-              <div className="rounded-[20px] border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70">
+              {/* <div className="rounded-[20px] border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70">
                 Customers will see your saved merchant name on hosted invoices and QR routes. Finish this page first for a cleaner payment experience.
-              </div>
+              </div> */}
             </div>
           </GlassCard>
         </div>
