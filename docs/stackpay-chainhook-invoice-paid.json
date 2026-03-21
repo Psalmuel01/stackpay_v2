@@ -1,22 +1,27 @@
 {
-  "name": "stackpay-invoice-paid",
+  "version": "1",
+  "chain": "stacks",
+  "name": "stackpay",
   "network": "testnet",
-  "version": 1,
-  "enabled": false,
-  "predicate": {
-    "type": "contract_log",
-    "contract_identifier": "ST13J1C3K69H3EDG2SVJ21SQ6GXD6A6F862QCK16D.architecture"
-  },
-  "action": {
-    "type": "http_post",
-    "url": "https://your-stackpay-app.com/api/webhooks/chainhooks",
-    "headers": {
-      "x-stackpay-chainhook-secret": "replace-me"
-    }
+  "filters": {
+    "events": [
+      {
+        "type": "contract_log",
+        "contract_identifier": "ST13J1C3K69H3EDG2SVJ21SQ6GXD6A6F862QCK16D.arch6"
+      }
+    ]
   },
   "options": {
     "decode_clarity_values": true,
-    "include_block_metadata": true,
-    "enable_on_registration": true
+    "include_post_conditions": false,
+    "include_contract_source_code": false,
+    "include_contract_abi": false,
+    "include_raw_transactions": false,
+    "include_block_signatures": false,
+    "include_block_metadata": true
+  },
+  "action": {
+    "type": "http_post",
+    "url": "https://stackpay.vercel.app/api/webhooks/chainhooks"
   }
 }
